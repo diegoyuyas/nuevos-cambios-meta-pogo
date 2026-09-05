@@ -1,5 +1,5 @@
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 type MoveDetail = { moveId:string, uses:number }
 type Match = { opponent:string, rating:number }
@@ -20,6 +20,15 @@ type PokemonEntry = {
 type MoveFull = {
   moveId:string, name:string, nameEs:string, type:string,
   power:number, energy:number, energyGain:number, isFast:number, cooldown:number, turns:number
+}
+
+// Formato de cada movimiento dentro del archivo que se descarga para actualizar
+// los movimientos de la próxima temporada (moves_actualizados.json). Ese archivo
+// puede venir como array plano, o como export completo tipo "gamemaster" con los
+// movimientos anidados en la clave "moves" (así es como lo genera el usuario).
+type MoveOverride = {
+  moveId:string, name:string, type:string, power:number, energy:number,
+  energyGain:number, cooldown:number, turns:number
 }
 
 type Compared = {
@@ -80,6 +89,7 @@ export default function App(){
   const [newData, setNewData] = useState<PokemonEntry[]>([])
   const [movesEs, setMovesEs] = useState<Record<string,string>>({})
   const [movesFull, setMovesFull] = useState<Record<string,MoveFull>>({})
+  const [movesActualizados, setMovesActualizados] = useState<MoveOverride[]>([])
   const [typesMap, setTypesMap] = useState<Record<string,string[]>>({})
   const [imagesMap, setImagesMap] = useState<Record<string,string>>({})
   const [leagueLogos, setLeagueLogos] = useState<Record<string,string>>({})
@@ -94,6 +104,20 @@ export default function App(){
   const [debug, setDebug] = useState<string>('')
   const [reloadKey, setReloadKey] = useState<number>(0)
   const [sinDatos, setSinDatos] = useState<boolean>(false)
+  const headerTopRef = useRef<HTMLDivElement>(null)
+  const [showVolver, setShowVolver] = useState(false)
+
+  useEffect(()=>{
+    function handleScroll(){
+      const el = headerTopRef.current
+      if(!el) return
+      const bottom = el.getBoundingClientRect().bottom
+      setShowVolver(bottom <= 0)
+    }
+    window.addEventListener('scroll', handleScroll, { passive:true })
+    handleScroll()
+    return ()=> window.removeEventListener('scroll', handleScroll)
+  },[])
 
   // Sección activa (Rankings / Movimientos)
   const [section, setSection] = useState<SectionKey>('rankings')
@@ -101,16 +125,19 @@ export default function App(){
   const [chargedSort, setChargedSort] = useState<MoveSortState>({ col:'name', dir:'asc' })
   const [moveLearners, setMoveLearners] = useState<{ moveId:string, isFast:boolean } | null>(null)
   const [moveSearch, setMoveSearch] = useState('')
+  const [fastOpen, setFastOpen] = useState(true)
+  const [chargedOpen, setChargedOpen] = useState(true)
 
   useEffect(()=>{
     async function load(){
       try{
         const folder = LIGAS[liga].folder
-        const [oldRes, newRes, movesRes, movesFullRes, typesRes, imgRes, logosRes] = await Promise.all([
+        const [oldRes, newRes, movesRes, movesFullRes, movesActualizadosRes, typesRes, imgRes, logosRes] = await Promise.all([
           fetch(`/data/${folder}/siempre_adelante.json`).catch(()=> null),
           fetch(`/data/${folder}/caminos_crepusculares.json`).catch(()=> null),
           fetch('/data/moves.json').then(r=> r.ok ? r.json() : {}).catch(()=> ({})),
           fetch('/data/moves_full.json').then(r=> r.ok ? r.json() : []).catch(()=> []),
+          fetch('/data/moves_actualizados.json').then(r=> r.ok ? r.json() : null).catch(()=> null),
           fetch('/data/pokemon_types.json').then(r=> r.ok ? r.json() : {}).catch(()=> ({})),
           fetch('/data/pokemon_images.json').then(r=> r.ok ? r.json() : {}).catch(()=> ({})),
           fetch('/data/logos/league_logos.json').then(r=> r.ok ? r.json() : {}).catch(()=> ({}))
@@ -121,13 +148,45 @@ export default function App(){
         if(Array.isArray(movesFullRes)){
           movesFullRes.forEach((m:MoveFull)=> fullMap[m.moveId] = m)
         }
-        setOldData(a); setNewData(b); setMovesEs(movesRes||{}); setMovesFull(fullMap); setTypesMap(typesRes||{}); setImagesMap(imgRes||{}); setLeagueLogos(logosRes||{})
+        // moves_actualizados.json puede venir como array plano, o como export
+        // completo tipo "gamemaster" con los movimientos anidados en la clave "moves".
+        let overrides: MoveOverride[] = []
+        if(Array.isArray(movesActualizadosRes)){
+          overrides = movesActualizadosRes
+        } else if(movesActualizadosRes && Array.isArray(movesActualizadosRes.moves)){
+          overrides = movesActualizadosRes.moves
+        }
+        setOldData(a); setNewData(b); setMovesEs(movesRes||{}); setMovesFull(fullMap); setMovesActualizados(overrides); setTypesMap(typesRes||{}); setImagesMap(imgRes||{}); setLeagueLogos(logosRes||{})
         setSinDatos(a.length===0 && b.length===0)
-        setDebug(`Cargados: ${LIGAS[liga].oldLabel} ${a.length} / ${LIGAS[liga].newLabel} ${b.length} / Moves ES ${Object.keys(movesRes||{}).length} / Full ${Object.keys(fullMap).length}`)
+        setDebug(`Cargados: ${LIGAS[liga].oldLabel} ${a.length} / ${LIGAS[liga].newLabel} ${b.length} / Moves ES ${Object.keys(movesRes||{}).length} / Full ${Object.keys(fullMap).length} / Actualizados ${overrides.length}`)
       }catch(e:any){ setDebug('Error: '+ e.message) }
     }
     load()
   },[reloadKey, liga])
+
+  // Combina moves_full.json (base) con moves_actualizados.json (cambios de la
+  // próxima temporada, Caminos Crepusculares). Solo se pisan los campos numéricos/
+  // tipo que trae el archivo de overrides; el nombre en español (nameEs) se conserva del base.
+  const movesFullActual = useMemo(()=>{
+    if(!movesActualizados.length) return movesFull
+    const merged: Record<string,MoveFull> = { ...movesFull }
+    movesActualizados.forEach(ov=>{
+      const base = merged[ov.moveId]
+      merged[ov.moveId] = {
+        moveId: ov.moveId,
+        name: ov.name ?? base?.name ?? ov.moveId,
+        nameEs: base?.nameEs ?? ov.name ?? ov.moveId,
+        type: ov.type ?? base?.type ?? '',
+        power: ov.power ?? base?.power ?? 0,
+        energy: ov.energy ?? base?.energy ?? 0,
+        energyGain: ov.energyGain ?? base?.energyGain ?? 0,
+        isFast: base?.isFast ?? 0,
+        cooldown: ov.cooldown ?? base?.cooldown ?? 0,
+        turns: ov.turns ?? base?.turns ?? Math.round((ov.cooldown ?? base?.cooldown ?? 0)/500),
+      }
+    })
+    return merged
+  },[movesFull, movesActualizados])
 
   const translateMove = (moveId:string) => {
     if(!moveId) return moveId
@@ -136,7 +195,9 @@ export default function App(){
   }
   const getMoveFull = (moveId:string): MoveFull | null => {
     const clean = moveId.replace('*','')
-    return movesFull[clean] || movesFull[moveId] || null
+    // El modal de detalle siempre muestra el pokémon de la temporada "cur" (casi
+    // siempre Caminos Crepusculares / temporada actual), por eso usa los stats actualizados.
+    return movesFullActual[clean] || movesFullActual[moveId] || null
   }
 
   const newRankMap = useMemo(()=>{
@@ -267,7 +328,8 @@ export default function App(){
   // ---------- Sección Movimientos ----------
   // Un movimiento es Cargado si no genera energía (energyGain === 0); Rápido si sí genera (energyGain > 0).
   // No usamos el campo "isFast" del JSON porque viene incorrecto para algunos movimientos (ej. Bocajarro).
-  const allMoves = useMemo(()=> Object.values(movesFull), [movesFull])
+  // Solo se muestran los movimientos de la temporada actual (Caminos Crepusculares), ya actualizados.
+  const allMoves = useMemo(()=> Object.values(movesFullActual), [movesFullActual])
   const fastMovesList = useMemo(()=> allMoves.filter(m=> (m.energyGain||0) > 0), [allMoves])
   const chargedMovesList = useMemo(()=> allMoves.filter(m=> (m.energyGain||0) === 0), [allMoves])
 
@@ -332,7 +394,7 @@ export default function App(){
 
   return (
     <div>
-      <div className="header">
+      <div className="header" ref={headerTopRef}>
         <div className="container">
           <h1 className="main-title" style={{textAlign:'center'}}>SELECCIONAR LIGA A ANALIZAR:</h1>
 
@@ -362,13 +424,26 @@ export default function App(){
             <a href="https://www.youtube.com/@EntrenadorGuayD" target="_blank" rel="noopener noreferrer">Entrenador GuayD</a>
             {' '}suscribiéndote y activando las notificaciones como señal de apoyo 🔔
           </p>
+        </div>
+      </div>
 
-          <div className="section-nav" style={{justifyContent:'center'}}>
+      <div className="sticky-section-nav">
+        <div className="container">
+          <div className="section-nav" style={{justifyContent:'center', margin:0}}>
             <button className={`section-btn ${section==='rankings' ? 'active' : ''}`} onClick={()=> setSection('rankings')}>📊 Rankings</button>
             <button className={`section-btn ${section==='movimientos' ? 'active' : ''}`} onClick={()=> setSection('movimientos')}>⚔️ Movimientos</button>
           </div>
         </div>
       </div>
+
+      {showVolver && (
+        <button
+          className="volver-btn"
+          onClick={()=> window.scrollTo({ top:0, behavior:'smooth' })}
+          aria-label="Volver arriba"
+          title="Volver arriba"
+        >⬆</button>
+      )}
 
       <div className="container" style={{display:'flex',flexDirection:'column',gap:12, marginTop:12}}>
 
@@ -439,8 +514,8 @@ export default function App(){
                   <label className="filter-label-big">📊 Ver todo el Ranking</label>
                   <select className="search" value={rankingCompletoSel} onChange={e=> handleCompletoChange(e.target.value)}>
                     <option value="">-- Seleccionar Ranking --</option>
-                    <option value="caminos">Ranking ({LIGAS[liga].newLabel})</option>
-                    <option value="siempre">Ranking ({LIGAS[liga].oldLabel})</option>
+                    <option value="caminos">Ranking Temporada Actual</option>
+                    <option value="siempre">Ranking Temporada Anterior</option>
                   </select>
                 </div>
               </div>
@@ -558,7 +633,13 @@ export default function App(){
             />
             <div className="moves-columns">
               <div>
-                <h2 style={{fontSize:18, marginBottom:10}}>⚡ Movimientos Rápidos <span className="small">({fastMovesFiltered.length})</span></h2>
+                <div className="moves-section-header">
+                  <h2 style={{fontSize:18}}>⚡ Movimientos Rápidos <span className="small">({fastMovesFiltered.length})</span></h2>
+                  <button className="btn collapse-btn" onClick={()=> setFastOpen(o=> !o)} aria-label="Mostrar/ocultar Movimientos Rápidos">
+                    {fastOpen ? '▲ Ocultar' : '▼ Mostrar'}
+                  </button>
+                </div>
+                {fastOpen && (
                 <div className="moves-table-wrap">
                   <table className="moves-table">
                     <thead>
@@ -588,10 +669,17 @@ export default function App(){
                     </tbody>
                   </table>
                 </div>
+                )}
               </div>
 
               <div>
-                <h2 style={{fontSize:18, marginBottom:10}}>💥 Movimientos Cargados <span className="small">({chargedMovesFiltered.length})</span></h2>
+                <div className="moves-section-header">
+                  <h2 style={{fontSize:18}}>💥 Movimientos Cargados <span className="small">({chargedMovesFiltered.length})</span></h2>
+                  <button className="btn collapse-btn" onClick={()=> setChargedOpen(o=> !o)} aria-label="Mostrar/ocultar Movimientos Cargados">
+                    {chargedOpen ? '▲ Ocultar' : '▼ Mostrar'}
+                  </button>
+                </div>
+                {chargedOpen && (
                 <div className="moves-table-wrap">
                   <table className="moves-table">
                     <thead>
@@ -619,6 +707,7 @@ export default function App(){
                     </tbody>
                   </table>
                 </div>
+                )}
               </div>
             </div>
           </div>
@@ -637,22 +726,22 @@ export default function App(){
             <div className="detail-grid-top">
               <div style={{display:'flex', flexDirection:'column', gap:8}}>
                 <div style={{background:'var(--card2)', border:'1px solid var(--border)', borderRadius:10, padding:'8px 10px'}}>
-                  <b style={{fontSize:10, color:'var(--muted)', display:'block'}}>Ranking Antiguo</b>
-                  <span style={{fontSize:14, fontWeight:800}}>#{selected.oldRank}</span>
+                  <b style={{fontSize:14, color:'var(--muted)', display:'block'}}>Ranking Antiguo</b>
+                  <span style={{fontSize:22, fontWeight:800}}>#{selected.oldRank}</span>
                 </div>
                 <div style={{background:'var(--card2)', border:'1px solid var(--border)', borderRadius:10, padding:'8px 10px'}}>
-                  <b style={{fontSize:10, color:'var(--muted)', display:'block'}}>9. Puesto(s) Subido(s)</b>
-                  <span style={{fontSize:13, fontWeight:800, color: selected.delta>0 ? 'var(--red)' : 'var(--green)'}}>{selected.delta>0 ? `▼ ${selected.delta}` : `▲ +${selected.mejora}`}</span>
+                  <b style={{fontSize:14, color:'var(--muted)', display:'block'}}>Puestos Subidos</b>
+                  <span style={{fontSize:22, fontWeight:800, color: selected.delta>0 ? 'var(--red)' : 'var(--green)'}}>{selected.delta>0 ? `▼ ${selected.delta}` : `▲ +${selected.mejora}`}</span>
                 </div>
               </div>
               <div style={{display:'flex', flexDirection:'column', gap:8}}>
                 <div style={{background:'var(--card2)', border:'1px solid var(--border)', borderRadius:10, padding:'8px 10px'}}>
-                  <b style={{fontSize:10, color:'var(--muted)', display:'block'}}>Ranking Actual</b>
-                  <span style={{fontSize:14, fontWeight:800, color:'var(--blue)'}}>#{selected.newRank}</span>
+                  <b style={{fontSize:14, color:'var(--muted)', display:'block'}}>Ranking Actual</b>
+                  <span style={{fontSize:22, fontWeight:800, color:'var(--blue)'}}>#{selected.newRank}</span>
                 </div>
                 <div style={{background:'var(--card2)', border:'1px solid var(--border)', borderRadius:10, padding:'8px 10px'}}>
-                  <b style={{fontSize:10, color:'var(--muted)', display:'block'}}>Score Actual</b>
-                  <span style={{fontSize:13, fontWeight:700}}>{selected.cur.score}</span>
+                  <b style={{fontSize:14, color:'var(--muted)', display:'block'}}>Score Actual</b>
+                  <span style={{fontSize:22, fontWeight:800}}>{selected.cur.score}</span>
                 </div>
               </div>
               <div style={{background:'var(--near-bg)', border:'1px dashed var(--dashed-border)', borderRadius:12, height:130, display:'flex', alignItems:'center', justifyContent:'center', overflow:'hidden'}}>
@@ -661,7 +750,7 @@ export default function App(){
             </div>
 
             <div style={{marginTop:14}}>
-              <b>Ataques recomendados (actual) - Español</b>
+              <b>Ataques Recomendados</b>
               <div style={{marginTop:6, display:'flex', gap:6, flexWrap:'wrap'}}>
                 {selected.cur.moveset?.map((m,i)=>{
                   const full = getMoveFull(m)

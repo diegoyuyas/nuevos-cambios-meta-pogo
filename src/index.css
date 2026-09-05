@@ -47,10 +47,17 @@
 
 body{background:var(--bg);color:var(--text);transition:background .2s ease, color .2s ease}
 .container{max-width:1200px;margin:0 auto;padding:12px}
-.header{position:sticky;top:0;z-index:20;background:var(--bg);backdrop-filter:blur(10px);border-bottom:1px solid var(--border);padding:16px 0}
+.header{background:var(--bg);border-bottom:1px solid var(--border);padding:16px 0}
 .header h1{font-size:20px;font-weight:800;letter-spacing:-0.02em}
 .main-title{font-size:22px;font-weight:800;letter-spacing:-0.01em}
 .header p{color:var(--muted);font-size:12px;margin-top:2px}
+
+/* Nav sticky independiente: solo Rankings/Movimientos quedan fijos al scrollear */
+.sticky-section-nav{position:sticky;top:0;z-index:25;background:var(--bg);backdrop-filter:blur(10px);border-bottom:1px solid var(--border);padding:8px 0}
+
+/* Botón flotante para volver arriba, visible solo cuando el header superior se ocultó */
+.volver-btn{position:fixed;right:16px;bottom:16px;z-index:40;width:44px;height:44px;border-radius:50%;border:none;background:var(--blue);color:#ffffff;font-size:18px;font-weight:800;cursor:pointer;box-shadow:0 4px 10px rgba(0,0,0,0.4)}
+.volver-btn:hover{filter:brightness(1.1)}
 .tabs{display:flex;gap:6px;overflow-x:auto;padding:10px 0;scrollbar-width:none}
 .tabs::-webkit-scrollbar{display:none}
 .tab{white-space:nowrap;padding:8px 14px;border-radius:999px;border:1px solid var(--border);background:var(--card);font-size:13px;cursor:pointer}
@@ -108,7 +115,7 @@ body{background:var(--bg);color:var(--text);transition:background .2s ease, colo
 .section-nav{display:flex;gap:10px;margin:16px 0 4px}
 .section-btn{white-space:nowrap;padding:9px 18px;border-radius:999px;border:1px solid #9ca3af;background:#d1d5db;color:#111318;font-size:13px;font-weight:700;cursor:pointer}
 .section-btn:hover{background:#e5e7eb}
-.section-btn.active{background:#f3f4f6;color:#000;font-weight:800;border-color:#6b7280;box-shadow:inset 0 0 0 2px #9ca3af}
+.section-btn.active{background:#f3f4f6;color:#000;font-weight:800;border-color:var(--blue);box-shadow:inset 0 0 0 2px var(--blue)}
 
 /* Etiquetas grandes de filtros */
 .filter-label-big{font-size:15px;font-weight:800;display:block;margin-bottom:6px}
@@ -129,6 +136,18 @@ body{background:var(--bg);color:var(--text);transition:background .2s ease, colo
 .moves-table td{padding:10px 12px;border-bottom:1px solid var(--border);vertical-align:top}
 .moves-table tr:hover td{background:var(--card2)}
 .move-en{color:var(--muted);font-size:11px}
+
+/* Botón pequeño para colapsar/expandir tablas de movimientos (útil en móvil) */
+.collapse-btn{flex-shrink:0;white-space:nowrap;padding:6px 10px;font-size:12px}
+
+/* Encabezado de cada tabla de Movimientos: el h2 se encoge/envuelve antes de
+   cortar el botón de Mostrar/Ocultar, así se ve completo en pantallas angostas */
+.moves-section-header{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.moves-section-header h2{margin:0;flex:1 1 auto;min-width:0}
+@media(max-width:420px){
+  .moves-section-header h2{font-size:15px}
+  .collapse-btn{font-size:11px;padding:5px 8px}
+}
 
 /* Layout responsive de la ficha de detalle del Pokémon */
 .detail-grid-top{display:grid;grid-template-columns:1fr 1fr 200px;gap:10px;align-items:start}
