@@ -42,8 +42,12 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 os.chdir(SCRIPT_DIR)
 
 RANKING_FILES = [
-    "public/data/siempre_adelante.json",
-    "public/data/caminos_crepusculares.json",
+    "public/data/super/siempre_adelante.json",
+    "public/data/super/caminos_crepusculares.json",
+    "public/data/ultra/siempre_adelante.json",
+    "public/data/ultra/caminos_crepusculares.json",
+    "public/data/master/siempre_adelante.json",
+    "public/data/master/caminos_crepusculares.json",
 ]
 SHADOW_ICON_FILE = "public/data/shadow_icon.json"
 OUTPUT_FILE = "public/data/pokemon_images.json"
@@ -241,13 +245,33 @@ def main():
 
     species_ids = set()
     for rf in RANKING_FILES:
+        if not os.path.exists(rf):
+            continue
         with open(rf, encoding="utf-8") as f:
             for entry in json.load(f):
                 species_ids.add(entry["speciesId"])
 
-    print(f"Total de especies (union de ambos rankings): {len(species_ids)}")
+    print(f"Total de especies (union de todas las ligas cargadas): {len(species_ids)}")
 
-    base_names = sorted({base_species(sid) for sid in species_ids})
+    # Modo incremental: si ya existe un pokemon_images.json, se reutiliza y
+    # solo se descargan las especies que todavia no tengan imagen guardada.
+    existing = {}
+    if os.path.exists(OUTPUT_FILE):
+        with open(OUTPUT_FILE, encoding="utf-8") as f:
+            try:
+                existing = json.load(f)
+            except Exception:
+                existing = {}
+        print(f"Se encontraron {len(existing)} imagenes ya generadas en {OUTPUT_FILE} (modo incremental).")
+
+    pending_ids = sorted(sid for sid in species_ids if sid not in existing)
+    print(f"Especies nuevas por procesar: {len(pending_ids)}\n")
+
+    if not pending_ids:
+        print("No hay especies nuevas. Nada que descargar.")
+        return
+
+    base_names = sorted({base_species(sid) for sid in pending_ids})
     print(f"Sprites base unicos a descargar: {len(base_names)}\n")
 
     print("Cargando y preparando el icono shadow (quitando fondo blanco)...")
@@ -273,10 +297,10 @@ def main():
 
     print(f"\nDescargas completas. Exitosas: {len(base_cache)} / Fallidas: {len(failed_bases)}")
 
-    print("\nComponiendo imagenes finales (normal + shadow con icono)...")
-    result = {}
+    print("\nComponiendo imagenes nuevas (normal + shadow con icono)...")
+    result = dict(existing)  # conserva todo lo ya generado antes
     compose_failed = []
-    for sid in sorted(species_ids):
+    for sid in pending_ids:
         base_name = base_species(sid)
         raw = base_cache.get(base_name)
         if raw is None:
@@ -295,7 +319,8 @@ def main():
     with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
         json.dump(result, f)
 
-    print(f"\nListo. {len(result)} / {len(species_ids)} imagenes guardadas en {OUTPUT_FILE}")
+    nuevas_ok = len(result) - len(existing)
+    print(f"\nListo. {nuevas_ok} imagen(es) nueva(s) agregada(s). Total en {OUTPUT_FILE}: {len(result)} / {len(species_ids)} especies.")
 
     all_failed = sorted(set(failed_bases) | set(compose_failed))
     if all_failed:
@@ -309,7 +334,7 @@ def main():
             "descargado, solo reintenta lo que falto)."
         )
     else:
-        print("\nTodas las especies se procesaron sin errores.")
+        print("\nTodas las especies nuevas se procesaron sin errores.")
 
 
 if __name__ == "__main__":

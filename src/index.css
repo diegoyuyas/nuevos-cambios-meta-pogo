@@ -10,11 +10,46 @@
   --red:#ef4444;
   --yellow:#eab308;
   --blue:#38bdf8;
+  --red-bg:#3a1a1a;
+  --red-text:#fca5a5;
+  --green-bg:#143a23;
+  --green-text:#86efac;
+  --modal-bg:#151821;
+  --placeholder:#555555;
+  --dashed-border:#3a455c;
+  --near-bg:#11151d;
+  --chip-bg:#232a39;
+  --accent-chip-bg:#2a344a;
 }
-body{background:var(--bg);color:var(--text)}
+
+:root[data-theme="light"]{
+  --bg:#f4f5f7;
+  --card:#ffffff;
+  --card2:#eef0f3;
+  --border:#dcdfe4;
+  --text:#161a20;
+  --muted:#5b6472;
+  --green:#16a34a;
+  --red:#dc2626;
+  --yellow:#ca8a04;
+  --blue:#0284c7;
+  --red-bg:#fde2e2;
+  --red-text:#b91c1c;
+  --green-bg:#dcfce7;
+  --green-text:#15803d;
+  --modal-bg:#ffffff;
+  --placeholder:#9aa0aa;
+  --dashed-border:#c7ccd4;
+  --near-bg:#eef0f3;
+  --chip-bg:#e6e9ee;
+  --accent-chip-bg:#dbeafe;
+}
+
+body{background:var(--bg);color:var(--text);transition:background .2s ease, color .2s ease}
 .container{max-width:1200px;margin:0 auto;padding:12px}
-.header{position:sticky;top:0;z-index:20;background:rgba(15,17,21,0.9);backdrop-filter:blur(10px);border-bottom:1px solid var(--border);padding:12px 0}
+.header{position:sticky;top:0;z-index:20;background:var(--bg);backdrop-filter:blur(10px);border-bottom:1px solid var(--border);padding:16px 0}
 .header h1{font-size:20px;font-weight:800;letter-spacing:-0.02em}
+.main-title{font-size:22px;font-weight:800;letter-spacing:-0.01em}
 .header p{color:var(--muted);font-size:12px;margin-top:2px}
 .tabs{display:flex;gap:6px;overflow-x:auto;padding:10px 0;scrollbar-width:none}
 .tabs::-webkit-scrollbar{display:none}
@@ -24,20 +59,20 @@ body{background:var(--bg);color:var(--text)}
 @media(min-width:768px){.grid{grid-template-columns:repeat(2,1fr)}}
 @media(min-width:1024px){.grid{grid-template-columns:repeat(3,1fr)}}
 .card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:14px;display:flex;flex-direction:column;gap:8px}
-.card:hover{border-color:#3a455c}
+.card:hover{border-color:var(--dashed-border)}
 .badge{font-size:10px;padding:3px 7px;border-radius:999px;border:1px solid var(--border);background:var(--card2)}
 .row{display:flex;justify-content:space-between;align-items:center;gap:8px}
 .rank{font-weight:800;font-size:18px}
 .delta.up{color:var(--green)}
 .delta.down{color:var(--red)}
 .moves{font-size:12px;color:var(--muted);line-height:1.4}
-.chip{display:inline-block;padding:2px 6px;border-radius:6px;background:#232a39;border:1px solid var(--border);font-size:11px;margin:2px}
+.chip{display:inline-block;padding:2px 6px;border-radius:6px;background:var(--chip-bg);border:1px solid var(--border);font-size:11px;margin:2px;color:var(--text)}
 .search{width:100%;padding:12px 14px;border-radius:12px;border:1px solid var(--border);background:var(--card);color:var(--text);outline:none}
 .modal{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,0.7);display:flex;align-items:flex-end;justify-content:center;padding:0}
 @media(min-width:768px){.modal{align-items:center;padding:20px}}
-.modal-card{background:#151821;border:1px solid var(--border);border-radius:20px 20px 0 0;width:100%;max-width:900px;max-height:92vh;overflow:auto;padding:16px}
+.modal-card{background:var(--modal-bg);border:1px solid var(--border);border-radius:20px 20px 0 0;width:100%;max-width:900px;max-height:92vh;overflow:auto;padding:16px;color:var(--text)}
 @media(min-width:768px){.modal-card{border-radius:20px}}
-.stat-bar{height:6px;background:#222a3a;border-radius:999px;overflow:hidden}
+.stat-bar{height:6px;background:var(--card2);border-radius:999px;overflow:hidden}
 .stat-fill{height:100%;background:var(--blue)}
 .hex{width:100%;height:180px}
 .kv{display:grid;grid-template-columns:1fr 1fr;gap:8px}
@@ -45,5 +80,75 @@ body{background:var(--bg);color:var(--text)}
 .kv b{font-size:11px;color:var(--muted);display:block}
 .kv span{font-size:13px;font-weight:600}
 .btn{padding:10px 14px;border-radius:12px;border:1px solid var(--border);background:var(--card2);color:var(--text);cursor:pointer;font-size:13px}
-.btn-primary{background:var(--text);color:#000;font-weight:700}
+.btn-primary{background:var(--blue);color:#ffffff;font-weight:700;border-color:var(--blue)}
 .small{font-size:11px;color:var(--muted)}
+
+/* Toggle de tema claro/oscuro */
+.theme-toggle-btn{padding:8px 14px;border-radius:999px;border:1px solid var(--border);background:var(--card2);color:var(--text);cursor:pointer;font-size:12px;font-weight:700}
+
+/* Filtro Maestro de Ligas */
+.league-btns{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+.league-btn{display:flex;align-items:center;gap:8px;padding:10px 20px;border-radius:14px;border:2px solid rgba(0,0,0,0.25);font-weight:800;font-size:14px;cursor:pointer;letter-spacing:0.02em;box-shadow:0 4px 0 rgba(0,0,0,0.35);transform:translateY(0);transition:transform .08s ease, box-shadow .08s ease}
+.league-btn img{display:block;border-radius:50%}
+.league-btn:active{transform:translateY(3px);box-shadow:0 1px 0 rgba(0,0,0,0.35)}
+.league-btn.pressed{transform:translateY(4px);box-shadow:0 0 0 rgba(0,0,0,0.35);border-color:rgba(255,255,255,0.6)}
+.league-super{background:#2563eb;color:#ffffff}
+.league-ultra{background:#eab308;color:#000000}
+.league-master{background:#7c3aed;color:#ffffff}
+.league-btn.pressed.league-super{background:#1d4ed8}
+.league-btn.pressed.league-ultra{background:#ca8a04}
+.league-btn.pressed.league-master{background:#6d28d9}
+
+/* Banner de bienvenida / apoyo canal */
+.welcome-banner{color:var(--muted);font-size:13px;line-height:1.6;max-width:640px;margin-left:auto;margin-right:auto}
+.welcome-banner a{color:var(--blue);font-weight:800;text-decoration:none}
+.welcome-banner a:hover{text-decoration:underline}
+
+/* Nav de secciones (Rankings / Movimientos) - plateado para contraste en fondo oscuro */
+.section-nav{display:flex;gap:10px;margin:16px 0 4px}
+.section-btn{white-space:nowrap;padding:9px 18px;border-radius:999px;border:1px solid #9ca3af;background:#d1d5db;color:#111318;font-size:13px;font-weight:700;cursor:pointer}
+.section-btn:hover{background:#e5e7eb}
+.section-btn.active{background:#f3f4f6;color:#000;font-weight:800;border-color:#6b7280;box-shadow:inset 0 0 0 2px #9ca3af}
+
+/* Etiquetas grandes de filtros */
+.filter-label-big{font-size:15px;font-weight:800;display:block;margin-bottom:6px}
+
+/* Aviso de datos no disponibles */
+.notice{background:#241f10;border:1px solid #4a3f1a;color:#f1d78a;border-radius:12px;padding:12px 14px;font-size:13px}
+
+/* Recuadro ovalado que resalta el filtro activo junto a su resultado */
+.filter-frame{border-radius:26px;transition:box-shadow .2s ease, border-color .2s ease, background .2s ease}
+.filter-frame-active{border:2px solid var(--blue);border-radius:26px;padding:14px;box-shadow:0 0 0 4px rgba(56,189,248,0.15);background:var(--card)}
+
+/* Tabla de movimientos */
+.moves-columns{display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start}
+.moves-table-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:14px}
+.moves-table{width:100%;border-collapse:collapse;font-size:13px;min-width:520px}
+.moves-table th{cursor:pointer;user-select:none;text-align:left;padding:10px 12px;border-bottom:2px solid var(--border);color:var(--muted);font-size:11px;text-transform:uppercase;white-space:nowrap;background:var(--card)}
+.moves-table th:hover{color:var(--text)}
+.moves-table td{padding:10px 12px;border-bottom:1px solid var(--border);vertical-align:top}
+.moves-table tr:hover td{background:var(--card2)}
+.move-en{color:var(--muted);font-size:11px}
+
+/* Layout responsive de la ficha de detalle del Pokémon */
+.detail-grid-top{display:grid;grid-template-columns:1fr 1fr 200px;gap:10px;align-items:start}
+.detail-grid-two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+
+/* Ajustes responsive generales */
+@media(max-width:900px){
+  .moves-columns{grid-template-columns:1fr}
+}
+@media(max-width:640px){
+  .detail-grid-top{grid-template-columns:1fr}
+  .detail-grid-two{grid-template-columns:1fr}
+  .header h1{font-size:17px}
+.main-title{font-size:17px}
+  .league-btn{padding:9px 14px;font-size:12px}
+  .league-btn img{width:18px;height:18px}
+  .welcome-banner{font-size:12px}
+  .moves-table{min-width:460px}
+}
+@media(max-width:420px){
+  .league-btns{gap:8px}
+  .league-btn{padding:8px 12px;font-size:11px}
+}
