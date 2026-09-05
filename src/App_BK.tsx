@@ -52,8 +52,6 @@ export default function App(){
   const [mejoraronSel, setMejoraronSel] = useState<string>('50')
   const [decayeronSel, setDecayeronSel] = useState<string>('')
   const [rankingCompletoSel, setRankingCompletoSel] = useState<string>('')
-  const [ordenMejoraron, setOrdenMejoraron] = useState<'ranking'|'escalones'>('ranking')
-  const [ordenDecayeron, setOrdenDecayeron] = useState<'ranking'|'escalones'>('ranking')
   const [activeTab, setActiveTab] = useState<'mejoraron'|'decayeron'|'completo'>('mejoraron')
   const [search, setSearch] = useState('')
   const [selected, setSelected] = useState<Compared|null>(null)
@@ -116,66 +114,10 @@ export default function App(){
     return list
   },[oldData,newData, typesMap])
 
-  const mejoraronList = useMemo(()=>{
-    const f = compared.filter(c=> c.mejora>0)
-    return f.sort((a,b)=> ordenMejoraron==='escalones' ? (b.mejora - a.mejora) : (a.newRank - b.newRank))
-  },[compared, ordenMejoraron])
-  const decayeronList = useMemo(()=>{
-    const f = compared.filter(c=> c.delta>0)
-    return f.sort((a,b)=> ordenDecayeron==='escalones' ? (b.delta - a.delta) : (a.newRank - b.newRank))
-  },[compared, ordenDecayeron])
-  const completoCaminos = useMemo(()=>{ const f = [...newData]; return f.map((p,i)=> ({...p, rankActual: (p as any).rank ?? i+1})).sort((a,b)=> a.rankActual - b.rankActual) },[newData])
-  const completoSiempre = useMemo(()=>{ const f = [...oldData]; return f.map((p,i)=> ({...p, rankActual: (p as any).rank_old ?? i+1})).sort((a,b)=> a.rankActual - b.rankActual) },[oldData])
-
-  // Mapa id -> Compared, para reutilizar el mismo modal de detalle desde cualquier lista
-  const comparedById = useMemo(()=>{
-    const m = new Map<string, Compared>()
-    compared.forEach(c=> m.set(c.id, c))
-    return m
-  },[compared])
-
-  // Construye un objeto "Compared" a partir de cualquier entrada (aunque no tenga contraparte en la otra temporada)
-  function buildCompared(entry:PokemonEntry, rankActual:number): Compared {
-    const existing = comparedById.get(entry.speciesId)
-    if(existing) return existing
-    return {
-      id: entry.speciesId,
-      name: entry.speciesName,
-      oldRank: rankActual,
-      newRank: rankActual,
-      delta: 0,
-      mejora: 0,
-      old: entry,
-      cur: entry,
-      tipos: typesMap[entry.speciesName] || []
-    }
-  }
-
-  // Universo completo para la búsqueda global (compared + huérfanos de cada temporada)
-  const universoBusqueda = useMemo(()=>{
-    const list: Compared[] = [...compared]
-    const seen = new Set(compared.map(c=> c.id))
-    oldData.forEach((p,i)=>{
-      if(!seen.has(p.speciesId)){
-        seen.add(p.speciesId)
-        list.push(buildCompared(p, (p as any).rank_old ?? i+1))
-      }
-    })
-    newData.forEach((p,i)=>{
-      if(!seen.has(p.speciesId)){
-        seen.add(p.speciesId)
-        list.push(buildCompared(p, (p as any).rank ?? i+1))
-      }
-    })
-    return list
-  },[compared, oldData, newData, typesMap])
-
-  // Resultados de búsqueda: siempre sobre TODO el dataset, sin importar filtros/tab activo
-  const searchResults = useMemo(()=>{
-    if(!search.trim()) return null
-    const q = search.toLowerCase()
-    return universoBusqueda.filter(c=> c.name.toLowerCase().includes(q)).sort((a,b)=> a.newRank - b.newRank)
-  },[search, universoBusqueda])
+  const mejoraronList = useMemo(()=>{ let f = compared.filter(c=> c.mejora>0); if(search) f=f.filter(c=> c.name.toLowerCase().includes(search.toLowerCase())); return f.sort((a,b)=> a.newRank - b.newRank) },[compared, search])
+  const decayeronList = useMemo(()=>{ let f = compared.filter(c=> c.delta>0); if(search) f=f.filter(c=> c.name.toLowerCase().includes(search.toLowerCase())); return f.sort((a,b)=> a.newRank - b.newRank) },[compared, search])
+  const completoCaminos = useMemo(()=>{ let f = [...newData]; if(search) f=f.filter(p=> p.speciesName.toLowerCase().includes(search.toLowerCase())); return f.map((p,i)=> ({...p, rankActual: (p as any).rank ?? i+1})).sort((a,b)=> a.rankActual - b.rankActual) },[newData, search])
+  const completoSiempre = useMemo(()=>{ let f = [...oldData]; if(search) f=f.filter(p=> p.speciesName.toLowerCase().includes(search.toLowerCase())); return f.map((p,i)=> ({...p, rankActual: (p as any).rank_old ?? i+1})).sort((a,b)=> a.rankActual - b.rankActual) },[oldData, search])
 
   const filteredMejoraron = useMemo(()=>{ const count = mejoraronSel === 'TODOS' ? mejoraronList.length : parseInt(mejoraronSel); return mejoraronList.slice(0, count) },[mejoraronList, mejoraronSel])
   const filteredDecayeron = useMemo(()=>{ if(!decayeronSel) return []; const count = decayeronSel === 'TODOS' ? decayeronList.length : parseInt(decayeronSel); return decayeronList.slice(0, count) },[decayeronList, decayeronSel])
@@ -215,46 +157,28 @@ export default function App(){
         <input className="search" placeholder="Buscar Pokémon... ej: Azumarill, Quagsire, Tinkaton" value={search} onChange={e=> setSearch(e.target.value)} />
 
         <div style={{display:'flex', gap:10, flexWrap:'wrap'}}>
-          <div style={{flex:1, minWidth:200, display:'flex', gap:8}}>
-            <div style={{flex:1}}>
-              <label className="small" style={{display:'block', marginBottom:4}}>🚀 Pokémon que Mejoraron</label>
-              <select className="search" value={mejoraronSel} onChange={e=> handleMejoraronChange(e.target.value)}>
-                <option value="10">Top 10 Mejoraron</option>
-                <option value="30">Top 30 Mejoraron</option>
-                <option value="50">Top 50 Mejoraron</option>
-                <option value="100">Top 100 Mejoraron</option>
-                <option value="200">Top 200 Mejoraron</option>
-                <option value="TODOS">TODOS los que mejoraron</option>
-              </select>
-            </div>
-            <div style={{width:150}}>
-              <label className="small" style={{display:'block', marginBottom:4}}>Ordenar por</label>
-              <select className="search" value={ordenMejoraron} onChange={e=> setOrdenMejoraron(e.target.value as 'ranking'|'escalones')}>
-                <option value="ranking">N° en Ranking</option>
-                <option value="escalones">N° de Escalones</option>
-              </select>
-            </div>
+          <div style={{flex:1, minWidth:200}}>
+            <label className="small" style={{display:'block', marginBottom:4}}>🚀 Pokémon que Mejoraron (orden por ranking actual)</label>
+            <select className="search" value={mejoraronSel} onChange={e=> handleMejoraronChange(e.target.value)}>
+              <option value="10">Top 10 Mejoraron</option>
+              <option value="30">Top 30 Mejoraron</option>
+              <option value="50">Top 50 Mejoraron</option>
+              <option value="100">Top 100 Mejoraron</option>
+              <option value="200">Top 200 Mejoraron</option>
+              <option value="TODOS">TODOS los que mejoraron</option>
+            </select>
           </div>
-          <div style={{flex:1, minWidth:200, display:'flex', gap:8}}>
-            <div style={{flex:1}}>
-              <label className="small" style={{display:'block', marginBottom:4}}>📉 Pokémon que Decayeron</label>
-              <select className="search" value={decayeronSel} onChange={e=> handleDecayeronChange(e.target.value)}>
-                <option value="">-- Seleccionar --</option>
-                <option value="10">Top 10 Decayeron</option>
-                <option value="20">Top 20 Decayeron</option>
-                <option value="30">Top 30 Decayeron</option>
-                <option value="50">Top 50 Decayeron</option>
-                <option value="200">Top 200 Decayeron</option>
-                <option value="TODOS">TODOS los que decayeron</option>
-              </select>
-            </div>
-            <div style={{width:150}}>
-              <label className="small" style={{display:'block', marginBottom:4}}>Ordenar por</label>
-              <select className="search" value={ordenDecayeron} onChange={e=> setOrdenDecayeron(e.target.value as 'ranking'|'escalones')}>
-                <option value="ranking">N° en Ranking</option>
-                <option value="escalones">N° de Escalones</option>
-              </select>
-            </div>
+          <div style={{flex:1, minWidth:200}}>
+            <label className="small" style={{display:'block', marginBottom:4}}>📉 Pokémon que Decayeron (orden por ranking actual)</label>
+            <select className="search" value={decayeronSel} onChange={e=> handleDecayeronChange(e.target.value)}>
+              <option value="">-- Seleccionar --</option>
+              <option value="10">Top 10 Decayeron</option>
+              <option value="20">Top 20 Decayeron</option>
+              <option value="30">Top 30 Decayeron</option>
+              <option value="50">Top 50 Decayeron</option>
+              <option value="200">Top 200 Decayeron</option>
+              <option value="TODOS">TODOS los que decayeron</option>
+            </select>
           </div>
           <div style={{flex:1, minWidth:200}}>
             <label className="small" style={{display:'block', marginBottom:4}}>📊 Ver todo el Ranking</label>
@@ -266,45 +190,9 @@ export default function App(){
           </div>
         </div>
 
-        {searchResults!==null ? (
+        {activeTab!=='completo' && (
           <>
-            <div className="small">{searchResults.length} resultado(s) para "{search}" • búsqueda en todo el ranking, sin importar filtros</div>
-            <div className="grid">
-              {searchResults.map(c=>(
-                <div key={c.id} className="card" onClick={()=> setSelected(c)} style={{cursor:'pointer', display:'flex', gap:10}}>
-                  <div style={{width:64, height:64, background:'#1f242f', borderRadius:12, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, border:'1px solid #2a3242', overflow:'hidden'}}>
-                    {imagesMap[c.id] ? <img src={imagesMap[c.id]} alt={c.name} style={{width:'100%', height:'100%', objectFit:'contain'}}/> : <span style={{fontSize:10, color:'#555'}}>imagen</span>}
-                  </div>
-                  <div style={{flex:1}}>
-                    <div className="row">
-                      <div style={{display:'flex', flexDirection:'column'}}>
-                        <div className="rank" style={{fontSize:20}}>#{c.newRank} {formatName(c.name)} <span style={{fontWeight:400, fontSize:13, color:'#9aa3b2'}}>{c.tipos.length? `(${c.tipos.join('/')})`:''}</span></div>
-                        <div style={{display:'flex', gap:12, marginTop:4}}>
-                          <span style={{fontSize:13, fontWeight:700, color:'#9aa3b2'}}>Antes <b style={{color:'#e6e8ee', fontSize:14}}>#{c.oldRank}</b></span>
-                          <span style={{fontSize:13, fontWeight:700, color:'#9aa3b2'}}>Ahora <b style={{color:'#38bdf8', fontSize:14}}>#{c.newRank}</b></span>
-                        </div>
-                      </div>
-                      {(c.delta!==0 || c.mejora!==0) && (
-                        <span className="badge" style={{fontSize:12, padding:'4px 8px', background: c.delta>0 ? '#3a1a1a' : '#143a23', color: c.delta>0 ? '#fca5a5' : '#86efac', display:'flex', gap:4, alignItems:'center'}}>
-                          {c.delta>0 ? `cayó: ▼ ${c.delta}` : `escaló: ▲ +${c.mejora}`}
-                        </span>
-                      )}
-                    </div>
-                    <div className="moves" style={{marginTop:8}}>
-                      <div><b>Rápido:</b> {translateMove(c.cur.moveset?.[0]||'')}</div>
-                      <div><b>Cargados:</b> {(c.cur.moveset?.slice(1)||[]).map(m=> translateMove(m)).join(', ')}</div>
-                    </div>
-                    <div style={{display:'flex',gap:4,flexWrap:'wrap', marginTop:6}}>
-                      {c.cur.moveset?.map((m,i)=> <span key={i} className="chip">{translateMove(m)}</span>)}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </>
-        ) : activeTab!=='completo' && (
-          <>
-            <div className="small">{displayList.length} resultados • {activeTab==='mejoraron' ? `Top ${mejoraronSel} que mejoraron (${ordenMejoraron==='escalones' ? 'orden por escalones' : 'orden por ranking'})` : `Top ${decayeronSel} que decayeron (${ordenDecayeron==='escalones' ? 'orden por escalones' : 'orden por ranking'})`} • Click en el mismo filtro recarga</div>
+            <div className="small">{displayList.length} resultados • {activeTab==='mejoraron' ? `Top ${mejoraronSel} que mejoraron` : `Top ${decayeronSel} que decayeron`} • Click en el mismo filtro recarga</div>
             <div className="grid">
               {displayList.map(c=>(
                 <div key={c.id} className="card" onClick={()=> setSelected(c)} style={{cursor:'pointer', display:'flex', gap:10}}>
@@ -338,20 +226,19 @@ export default function App(){
           </>
         )}
 
-        {searchResults===null && activeTab==='completo' && (
+        {activeTab==='completo' && (
           <>
             <div className="small">Mostrando {rankingCompletoSel==='caminos' ? 'Caminos Crepusculares' : 'Siempre Adelante'} - {rankingCompletoSel==='caminos' ? completoCaminos.length : completoSiempre.length} Pokémon</div>
             <div className="grid">
               {(rankingCompletoSel==='caminos' ? completoCaminos : completoSiempre).map((p:any)=>(
-                <div key={p.speciesId} className="card" style={{display:'flex', gap:10, alignItems:'center'}}>
-                  <div style={{width:56, height:56, background:'#1f242f', borderRadius:10, display:'flex', alignItems:'center', justifyContent:'center', border:'1px solid #2a3242', flexShrink:0}}>
+                <div key={p.speciesId} className="card" style={{display:'flex', gap:10}}>
+                  <div style={{width:56, height:56, background:'#1f242f', borderRadius:10, display:'flex', alignItems:'center', justifyContent:'center', border:'1px solid #2a3242'}}>
                     {imagesMap[p.speciesId] ? <img src={imagesMap[p.speciesId]} alt={p.speciesName} style={{width:'100%', height:'100%', objectFit:'contain'}}/> : <span style={{fontSize:9, color:'#555'}}>imagen</span>}
                   </div>
-                  <div style={{flex:1}}>
+                  <div>
                     <div className="rank" style={{fontSize:18}}>#{p.rankActual} {formatName(p.speciesName)}</div>
                     <div className="moves" style={{marginTop:4}}><b>Rápido:</b> {translateMove(p.moveset?.[0])} <br/><b>Cargados:</b> {p.moveset?.slice(1).map((m:string)=> translateMove(m)).join(', ')}</div>
                   </div>
-                  <button className="btn" style={{flexShrink:0, whiteSpace:'nowrap'}} onClick={()=> setSelected(buildCompared(p, p.rankActual))}>Más información</button>
                 </div>
               ))}
             </div>
