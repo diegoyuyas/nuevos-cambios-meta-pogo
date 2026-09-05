@@ -54,6 +54,7 @@ OUTPUT_FILE = "public/data/pokemon_images.json"
 FAILED_LOG = "imagenes_fallidas.txt"
 
 POKEMONDB_URL = "https://img.pokemondb.net/sprites/home/normal/{slug}.png"
+POKEMONDB_GO_URL = "https://img.pokemondb.net/sprites/go/normal/{slug}.png"
 POKEAPI_URL = "https://pokeapi.co/api/v2/pokemon/{name}/"
 
 HEADERS = {
@@ -98,8 +99,21 @@ SLUG_OVERRIDES = {
     "nidoran_f": "nidoran-f",
     # Formas ambiguas: mejor intento, verificar en imagenes_fallidas.txt si no coinciden
     "darmanitan_standard": "darmanitan",
-    "darmanitan_galarian_standard": "darmanitan-galar",
+    "darmanitan_galarian_standard": "darmanitan-galarian-standard",
     "cherrim_overcast": "cherrim",
+    "cherrim_sunny": "cherrim-sunshine",
+    "tauros_combat": "tauros-paldean-combat",
+    "tauros_blaze": "tauros-paldean-blaze",
+    "tauros_aqua": "tauros-paldean-aqua",
+    # IDs con datos corruptos/truncados que vienen asi en el export de PvPoke
+    # (no representan una forma real distinta): se muestra el sprite base.
+    "golisopodsh": "golisopod",
+    "cradily_b": "cradily",
+    # Zacian/Zamazenta Crowned: pokemondb nombra el sprite sin la palabra
+    # "sword"/"shield" (zacian-crowned.png, zamazenta-crowned.png), pero el
+    # speciesId de PvPoke SI la incluye (zacian_crowned_sword, etc).
+    "zacian_crowned_sword": "zacian-crowned",
+    "zamazenta_crowned_shield": "zamazenta-crowned",
 }
 
 FORM_SUFFIX_MAP = {
@@ -147,8 +161,8 @@ def download_bytes(url: str) -> bytes:
 
 
 def fetch_sprite_bytes(slug: str):
-    """Intenta pokemondb primero, luego PokeAPI. Devuelve bytes PNG o None."""
-    # 1) Fuente principal: pokemondb
+    """Intenta pokemondb (Home), luego pokemondb (GO), luego PokeAPI. Devuelve bytes PNG o None."""
+    # 1) Fuente principal: pokemondb, sprites de "Home" (la mayoria de especies)
     try:
         data = download_bytes(POKEMONDB_URL.format(slug=slug))
         if data:
@@ -156,7 +170,16 @@ def fetch_sprite_bytes(slug: str):
     except Exception:
         pass
 
-    # 2) Fallback: PokeAPI (devuelve JSON con la URL del sprite "home")
+    # 2) Fallback: pokemondb, sprites de "GO" (disenos exclusivos de Pokemon GO
+    #    que no tienen sprite de Home, ej. Mewtwo Armored)
+    try:
+        data = download_bytes(POKEMONDB_GO_URL.format(slug=slug))
+        if data:
+            return data
+    except Exception:
+        pass
+
+    # 3) Fallback: PokeAPI (devuelve JSON con la URL del sprite "home")
     try:
         meta_raw = download_bytes(POKEAPI_URL.format(name=slug))
         meta = json.loads(meta_raw)

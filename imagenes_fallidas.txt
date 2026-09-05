@@ -4,5 +4,3 @@ darmanitan_galarian_standard
 golisopodsh
 mewtwo_armored
 tauros_combat
-zacian_crowned_sword
-zamazenta_crowned_shield
