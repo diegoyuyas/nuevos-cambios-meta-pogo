@@ -70,7 +70,22 @@ function capitalize(str:string){
   return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase()
 }
 
+function useVisitCounter(){
+  const [visitas, setVisitas] = useState<number|null>(null)
+  const yaContado = useRef(false)
+  useEffect(()=>{
+    if (yaContado.current) return
+    yaContado.current = true
+    fetch('/api/visits')
+      .then(r=> r.ok ? r.json() : Promise.reject())
+      .then(data=> setVisitas(data.visitas))
+      .catch(()=> setVisitas(null))
+  }, [])
+  return visitas
+}
+
 export default function App(){
+  const visitas = useVisitCounter()
   const [theme, setTheme] = useState<ThemeKey>(()=>{
     try{
       const saved = window.localStorage.getItem('comparador_theme')
@@ -396,6 +411,11 @@ export default function App(){
     <div>
       <div className="header" ref={headerTopRef}>
         <div className="container">
+          {visitas!==null && (
+            <div style={{textAlign:'center', fontSize:12, color:'var(--muted)', marginBottom:6}}>
+              👁️ Visitas: {visitas.toLocaleString('es-PE')}
+            </div>
+          )}
           <h1 className="main-title" style={{textAlign:'center'}}>SELECCIONAR LIGA A ANALIZAR:</h1>
 
           <div className="league-btns" style={{justifyContent:'center', marginTop:16}}>
@@ -781,26 +801,24 @@ export default function App(){
             <div className="detail-grid-two" style={{marginTop:14}}>
               <div>
                 <b>5 Mejores Match (actual)</b>
-                <div className="small" style={{color:'var(--muted)', marginBottom:4}}>Ranking Actual</div>
                 {selected.cur.matchups?.slice(0,5).map((m,i)=>{
                   const rank = getRankingForOpponent(m.opponent)
                   return (
                     <div key={i} className="row small" style={{marginTop:6, borderBottom:'1px solid var(--border)', paddingBottom:4}}>
                       <span>{formatName(m.opponent)}</span>
-                      <span style={{fontWeight:700}}>{rank ? `#${rank}` : ''} <span style={{fontSize:10, color:'var(--muted)'}}>Meta {m.rating}</span></span>
+                      <span style={{fontWeight:700}}>{rank ? `Top #${rank}` : ''}</span>
                     </div>
                   )
                 })}
               </div>
               <div>
                 <b>5 Hard Counters (actual)</b>
-                <div className="small" style={{color:'var(--muted)', marginBottom:4}}>Ranking Meta</div>
                 {selected.cur.counters?.slice(0,5).map((m,i)=>{
                   const rank = getRankingForOpponent(m.opponent)
                   return (
                     <div key={i} className="row small" style={{marginTop:6, borderBottom:'1px solid var(--border)', paddingBottom:4}}>
                       <span>{formatName(m.opponent)}</span>
-                      <span style={{fontWeight:700}}>{rank ? `#${rank}` : ''} <span style={{fontSize:10, color:'var(--muted)'}}>Meta {m.rating}</span></span>
+                      <span style={{fontWeight:700}}>{rank ? `Top #${rank}` : ''}</span>
                     </div>
                   )
                 })}
