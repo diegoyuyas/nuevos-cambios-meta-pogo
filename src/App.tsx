@@ -392,17 +392,35 @@ export default function App(){
     return s.dir==='asc' ? ' ▲' : ' ▼'
   }
 
-  // Pokémon (unión de ambas temporadas de la liga activa) que aprenden el movimiento seleccionado
+  // Pokémon (unión de ambas temporadas de la liga activa) que aprenden el movimiento seleccionado.
+  // Importante: un pokémon puede aprender un movimiento en una temporada y no en la otra (ej. Volbeat
+  // con Acoso en Caminos Crepusculares), así que unimos fastMoves/chargedMoves de ambas temporadas
+  // en vez de quedarnos solo con la primera aparición (y así también el resaltado en negrita funciona
+  // sin importar de qué temporada venga el movimiento).
   const learnersFor = useMemo(()=>{
     if(!moveLearners) return []
     const { moveId } = moveLearners
-    const map = new Map<string, PokemonEntry>()
-    ;[...oldData, ...newData].forEach(p=>{ if(!map.has(p.speciesId)) map.set(p.speciesId, p) })
-    const result: PokemonEntry[] = []
-    map.forEach(p=>{
-      const fastIds = (p.moves?.fastMoves||[]).map(m=> m.moveId)
-      const chargedIds = (p.moves?.chargedMoves||[]).map(m=> m.moveId)
-      if(fastIds.includes(moveId) || chargedIds.includes(moveId)) result.push(p)
+    const byId = new Map<string, { display: PokemonEntry, fastMoves: MoveDetail[], chargedMoves: MoveDetail[] }>()
+    ;[...oldData, ...newData].forEach(p=>{
+      const existing = byId.get(p.speciesId)
+      if(!existing){
+        byId.set(p.speciesId, {
+          display: p,
+          fastMoves: [...(p.moves?.fastMoves||[])],
+          chargedMoves: [...(p.moves?.chargedMoves||[])],
+        })
+      } else {
+        const fastIds = new Set(existing.fastMoves.map(m=> m.moveId))
+        ;(p.moves?.fastMoves||[]).forEach(m=>{ if(!fastIds.has(m.moveId)) existing.fastMoves.push(m) })
+        const chargedIds = new Set(existing.chargedMoves.map(m=> m.moveId))
+        ;(p.moves?.chargedMoves||[]).forEach(m=>{ if(!chargedIds.has(m.moveId)) existing.chargedMoves.push(m) })
+        existing.display = p // newData llega después en el array: prioriza mostrar los demás datos (score, etc.) de la temporada actual
+      }
+    })
+    const result: (PokemonEntry & { moves: { fastMoves:MoveDetail[], chargedMoves:MoveDetail[] } })[] = []
+    byId.forEach(({ display, fastMoves, chargedMoves })=>{
+      const learns = fastMoves.some(m=> m.moveId===moveId) || chargedMoves.some(m=> m.moveId===moveId)
+      if(learns) result.push({ ...display, moves: { fastMoves, chargedMoves } })
     })
     return result.sort((a,b)=> a.speciesName.localeCompare(b.speciesName))
   },[moveLearners, oldData, newData])
