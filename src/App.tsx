@@ -45,6 +45,140 @@ const LIGAS: Record<LigaKey, { label:string, folder:string, oldLabel:string, new
   master: { label:'LIGA MASTER', folder:'master', oldLabel:'Temporada Anterior', newLabel:'Temporada Actual',      className:'league-master' },
 }
 
+// Tope de CP por liga. Master no tiene tope real en el juego (cualquier CP entra),
+// por eso ahí el mejor IV siempre es 15/15/15 sin necesidad de búsqueda.
+const CP_CAPS: Record<LigaKey, number | null> = { super: 1500, ultra: 2500, master: null }
+
+// Tabla oficial de multiplicadores de CP (CPM) por nivel, en pasos de 0.5,
+// extraída y verificada directamente del código fuente de PvPoke (Pokemon.js):
+// cpms[0] = nivel 1, cpms[1] = nivel 1.5, cpms[2] = nivel 2, ... índice = (nivel-1)*2
+const CPMS: number[] = [0.0939999967813491,0.135137430784308,0.166397869586944,0.192650914456886,0.215732470154762,0.236572655026622,0.255720049142837,0.273530381100769,0.290249884128570,0.306057381335773,0.321087598800659,0.335445032295077,0.349212676286697,0.362457748778790,0.375235587358474,0.387592411085168,0.399567276239395,0.411193549517250,0.422500014305114,0.432926413410414,0.443107545375824,0.453059953871985,0.462798386812210,0.472336077786704,0.481684952974319,0.490855810259008,0.499858438968658,0.508701756943992,0.517393946647644,0.525942508771329,0.534354329109191,0.542635762230353,0.550792694091796,0.558830599438087,0.566754519939422,0.574569148039264,0.582278907299041,0.589887911977272,0.597400009632110,0.604823657502073,0.612157285213470,0.619404110566050,0.626567125320434,0.633649181622743,0.640652954578399,0.647580963301656,0.654435634613037,0.661219263506722,0.667934000492096,0.674581899290818,0.681164920330047,0.687684905887771,0.694143652915954,0.700542893277978,0.706884205341339,0.713169102333341,0.719399094581604,0.725575616972598,0.731700003147125,0.734741011137376,0.737769484519958,0.740785574597326,0.743789434432983,0.746781208702482,0.749761044979095,0.752729105305821,0.755685508251190,0.758630366519684,0.761563837528228,0.764486065255226,0.767397165298461,0.770297273971590,0.773186504840850,0.776064945942412,0.778932750225067,0.781790064808426,0.784636974334716,0.787473583646825,0.790300011634826,0.792803950958807,0.795300006866455,0.797803921486970,0.800300002098083,0.802803892322847,0.805299997329711,0.807803863460723,0.810299992561340,0.812803834895026,0.815299987792968,0.817803806620319,0.820299983024597,0.822803778631297,0.825299978256225,0.827803750922782,0.830299973487854,0.832803753381377,0.835300028324127,0.837803755931569,0.840300023555755,0.842803729034748,0.845300018787384,0.847803702398935,0.850300014019012,0.852803676019539,0.855300009250640,0.857803649892077,0.860300004482269,0.862803624012168,0.865299999713897]
+
+type BestIVResult = { level:number, atk:number, def:number, hp:number, cp:number, product:number, statAtk:number, statDef:number, statHp:number }
+
+/** Calcula el CP dado un CPM y stats base+IV, con la misma fórmula que usa el juego/PvPoke. */
+function calcCP(baseAtk:number, baseDef:number, baseHp:number, atkIV:number, defIV:number, hpIV:number, cpm:number){
+  return Math.floor(((baseAtk+atkIV) * Math.pow(baseDef+defIV, 0.5) * Math.pow(baseHp+hpIV, 0.5) * cpm * cpm) / 10)
+}
+
+/** Stats reales (Ataque/Defensa/Salud) de un Pokémon a un nivel e IV específicos. */
+function statsAtLevel(baseAtk:number, baseDef:number, baseHp:number, atkIV:number, defIV:number, hpIV:number, level:number){
+  const idx = Math.round((level-1)*2)
+  const cpm = CPMS[Math.max(0, Math.min(CPMS.length-1, idx))]
+  return { atk: cpm*(baseAtk+atkIV), def: cpm*(baseDef+defIV), hp: Math.floor(cpm*(baseHp+hpIV)) }
+}
+
+/**
+ * Busca la combinación de IV (0-15 cada uno) y nivel que da el MAYOR stat product
+ * (Ataque x Defensa x Salud) sin pasarse del tope de CP de la liga. Es el mismo
+ * algoritmo de fuerza bruta que usa PvPoke internamente para su "Rank 1".
+ * Si cpCap es null (Liga Master, sin tope), el resultado siempre es 15/15/15 al
+ * nivel máximo, sin necesidad de buscar.
+ */
+function findBestIV(baseAtk:number, baseDef:number, baseHp:number, cpCap:number|null): BestIVResult {
+  const maxLevelIdx = CPMS.length - 1 // nivel máximo disponible en la tabla
+  if(cpCap===null){
+    const cpm = CPMS[Math.min(100, maxLevelIdx)] // nivel 51 (índice 100)
+    const cp = calcCP(baseAtk, baseDef, baseHp, 15, 15, 15, cpm)
+    const atk = cpm*(baseAtk+15), def = cpm*(baseDef+15), hp = Math.floor(cpm*(baseHp+15))
+    return { level:51, atk:15, def:15, hp:15, cp, product: atk*def*hp, statAtk:atk, statDef:def, statHp:hp }
+  }
+
+  let best: BestIVResult | null = null
+  for(let atkIV=0; atkIV<=15; atkIV++){
+    for(let defIV=0; defIV<=15; defIV++){
+      for(let hpIV=0; hpIV<=15; hpIV++){
+        // Buscar el nivel más alto (hasta 51, en pasos de 0.5) que no exceda el tope de CP
+        let lo = 0, hi = Math.min(100, maxLevelIdx) // índice de nivel 1 a 51
+        let bestIdx = 0
+        while(lo<=hi){
+          const mid = (lo+hi)>>1
+          const cpm = CPMS[mid]
+          const cp = calcCP(baseAtk, baseDef, baseHp, atkIV, defIV, hpIV, cpm)
+          if(cp<=cpCap){ bestIdx = mid; lo = mid+1 } else { hi = mid-1 }
+        }
+        const cpm = CPMS[bestIdx]
+        const cp = calcCP(baseAtk, baseDef, baseHp, atkIV, defIV, hpIV, cpm)
+        if(cp===0 || cp>cpCap) continue
+        const atk = cpm*(baseAtk+atkIV), def = cpm*(baseDef+defIV), hp = Math.floor(cpm*(baseHp+hpIV))
+        const product = atk*def*hp
+        if(!best || product>best.product){
+          best = { level: 1 + bestIdx/2, atk:atkIV, def:defIV, hp:hpIV, cp, product, statAtk:atk, statDef:def, statHp:hp }
+        }
+      }
+    }
+  }
+  return best as BestIVResult
+}
+
+// ---------------------------------------------------------------------------
+// Tabla de tipos (efectividad estándar de Pokémon, igual en Pokémon GO) y
+// funciones para calcular debilidades/resistencias, usadas para recomendar
+// "Mejores Acompañantes". No requiere simulación de combate, solo matemática
+// de tipos + los movimientos/tipos que ya carga la app.
+// ---------------------------------------------------------------------------
+type PokeType = 'normal'|'fire'|'water'|'electric'|'grass'|'ice'|'fighting'|'poison'|'ground'|'flying'|'psychic'|'bug'|'rock'|'ghost'|'dragon'|'dark'|'steel'|'fairy'
+
+const ALL_TYPES: PokeType[] = ['normal','fire','water','electric','grass','ice','fighting','poison','ground','flying','psychic','bug','rock','ghost','dragon','dark','steel','fairy']
+
+// Por cada tipo ATACANTE: contra qué tipos pega fuerte (2x) y contra cuáles pega débil (0.5x).
+// Las "inmunidades" clásicas (ej. Normal no afecta a Fantasma) se tratan igual que
+// una resistencia (0.5x), que es como realmente funcionan en Pokémon GO.
+const TYPE_CHART: Record<PokeType, { strong: PokeType[], weak: PokeType[] }> = {
+  normal:   { strong: [],                                   weak: ['rock','ghost','steel'] },
+  fire:     { strong: ['grass','ice','bug','steel'],        weak: ['fire','water','rock','dragon'] },
+  water:    { strong: ['fire','ground','rock'],              weak: ['water','grass','dragon'] },
+  electric: { strong: ['water','flying'],                    weak: ['electric','grass','dragon','ground'] },
+  grass:    { strong: ['water','ground','rock'],             weak: ['fire','grass','poison','flying','bug','dragon','steel'] },
+  ice:      { strong: ['grass','ground','flying','dragon'],  weak: ['fire','water','ice','steel'] },
+  fighting: { strong: ['normal','ice','rock','dark','steel'],weak: ['poison','flying','psychic','bug','fairy','ghost'] },
+  poison:   { strong: ['grass','fairy'],                     weak: ['poison','ground','rock','ghost','steel'] },
+  ground:   { strong: ['fire','electric','poison','rock','steel'], weak: ['grass','bug','flying'] },
+  flying:   { strong: ['grass','fighting','bug'],            weak: ['electric','rock','steel'] },
+  psychic:  { strong: ['fighting','poison'],                 weak: ['psychic','steel','dark'] },
+  bug:      { strong: ['grass','psychic','dark'],            weak: ['fire','fighting','poison','flying','ghost','steel','fairy'] },
+  rock:     { strong: ['fire','ice','flying','bug'],         weak: ['fighting','ground','steel'] },
+  ghost:    { strong: ['psychic','ghost'],                   weak: ['dark','normal'] },
+  dragon:   { strong: ['dragon'],                            weak: ['steel','fairy'] },
+  dark:     { strong: ['psychic','ghost'],                   weak: ['fighting','dark','fairy'] },
+  steel:    { strong: ['ice','rock','fairy'],                weak: ['fire','water','electric','steel'] },
+  fairy:    { strong: ['fighting','dragon','dark'],           weak: ['fire','poison','steel'] },
+}
+
+function typeMultiplier(atk:PokeType, def:PokeType): number {
+  const entry = TYPE_CHART[atk]
+  if(!entry) return 1
+  if(entry.strong.includes(def)) return 2
+  if(entry.weak.includes(def)) return 0.5
+  return 1
+}
+// Multiplicador total de un tipo atacante contra un Pokémon con 1 o 2 tipos (se multiplican)
+function totalMultiplier(atk:PokeType, defTypes:string[]): number {
+  return defTypes.reduce((acc, dt)=> acc * typeMultiplier(atk, dt.toLowerCase() as PokeType), 1)
+}
+function weaknessesOf(types:string[]): PokeType[] {
+  return ALL_TYPES.filter(t=> totalMultiplier(t, types) > 1)
+}
+function resistancesOf(types:string[]): PokeType[] {
+  return ALL_TYPES.filter(t=> totalMultiplier(t, types) < 1)
+}
+function baseSpeciesId(id:string): string {
+  return id.endsWith('_shadow') ? id.slice(0, -7) : id
+}
+
+const TYPE_ES: Record<PokeType,string> = {
+  normal:'Normal', fire:'Fuego', water:'Agua', grass:'Planta', electric:'Eléctrico',
+  ice:'Hielo', fighting:'Lucha', poison:'Veneno', ground:'Tierra', flying:'Volador',
+  psychic:'Psíquico', bug:'Bicho', rock:'Roca', ghost:'Fantasma', dragon:'Dragón',
+  steel:'Acero', dark:'Siniestro', fairy:'Hada'
+}
+function translateType(t:string): string {
+  return TYPE_ES[t.toLowerCase() as PokeType] || t
+}
+function translateTypes(types:string[]): string {
+  return types.map(translateType).join('/')
+}
+
 type SectionKey = 'rankings' | 'movimientos'
 type MoveSortCol = 'name' | 'type' | 'energy' | 'power' | 'turns'
 type MoveSortDir = 'asc' | 'desc'
@@ -105,6 +239,8 @@ export default function App(){
   const [movesEs, setMovesEs] = useState<Record<string,string>>({})
   const [movesFull, setMovesFull] = useState<Record<string,MoveFull>>({})
   const [movesActualizados, setMovesActualizados] = useState<MoveOverride[]>([])
+  const [baseStatsMap, setBaseStatsMap] = useState<Record<string,{atk:number,def:number,hp:number}>>({})
+  const [defaultIVsMap, setDefaultIVsMap] = useState<Record<string,{cp500?:number[],cp1500?:number[],cp2500?:number[]}>>({})
   const [typesMap, setTypesMap] = useState<Record<string,string[]>>({})
   const [imagesMap, setImagesMap] = useState<Record<string,string>>({})
   const [leagueLogos, setLeagueLogos] = useState<Record<string,string>>({})
@@ -141,6 +277,7 @@ export default function App(){
   const [moveLearners, setMoveLearners] = useState<{ moveId:string, isFast:boolean } | null>(null)
   const [moveSearch, setMoveSearch] = useState('')
   const [fastOpen, setFastOpen] = useState(true)
+  const [acompN, setAcompN] = useState<number>(5)
   const [chargedOpen, setChargedOpen] = useState(true)
 
   useEffect(()=>{
@@ -171,7 +308,26 @@ export default function App(){
         } else if(movesActualizadosRes && Array.isArray(movesActualizadosRes.moves)){
           overrides = movesActualizadosRes.moves
         }
-        setOldData(a); setNewData(b); setMovesEs(movesRes||{}); setMovesFull(fullMap); setMovesActualizados(overrides); setTypesMap(typesRes||{}); setImagesMap(imgRes||{}); setLeagueLogos(logosRes||{})
+        // Ese mismo export "gamemaster" trae, por cada especie, sus stats base
+        // reales (Ataque/Defensa/Salud) y el mejor IV que ya calculó PvPoke
+        // ("Gana CMP") para cada tope de CP. Si el archivo no existe, quedan vacíos
+        // y sencillamente no se muestran esos datos.
+        const baseStats: Record<string,{atk:number,def:number,hp:number}> = {}
+        const defaultIVs: Record<string,{cp500?:number[],cp1500?:number[],cp2500?:number[]}> = {}
+        // pokemon_types.json no existe en el proyecto: se usa el gamemaster (moves_actualizados.json)
+        // como fuente de tipos por especie, indexado por speciesName para no romper el resto del código.
+        const typesFromGamemaster: Record<string,string[]> = {}
+        if(movesActualizadosRes && Array.isArray(movesActualizadosRes.pokemon)){
+          movesActualizadosRes.pokemon.forEach((p:any)=>{
+            if(p.speciesId && p.baseStats) baseStats[p.speciesId] = p.baseStats
+            if(p.speciesId && p.defaultIVs) defaultIVs[p.speciesId] = p.defaultIVs
+            if(p.speciesName && Array.isArray(p.types)){
+              typesFromGamemaster[p.speciesName] = p.types.filter((t:string)=> t && t!=='none')
+            }
+          })
+        }
+        const mergedTypesMap = { ...typesFromGamemaster, ...(typesRes||{}) }
+        setOldData(a); setNewData(b); setMovesEs(movesRes||{}); setMovesFull(fullMap); setMovesActualizados(overrides); setBaseStatsMap(baseStats); setDefaultIVsMap(defaultIVs); setTypesMap(mergedTypesMap); setImagesMap(imgRes||{}); setLeagueLogos(logosRes||{})
         setSinDatos(a.length===0 && b.length===0)
         setDebug(`Cargados: ${LIGAS[liga].oldLabel} ${a.length} / ${LIGAS[liga].newLabel} ${b.length} / Moves ES ${Object.keys(movesRes||{}).length} / Full ${Object.keys(fullMap).length} / Actualizados ${overrides.length}`)
       }catch(e:any){ setDebug('Error: '+ e.message) }
@@ -298,6 +454,110 @@ export default function App(){
     return universoBusqueda.filter(c=> c.name.toLowerCase().includes(q)).sort((a,b)=> a.newRank - b.newRank)
   },[search, universoBusqueda])
 
+  // Stats base + los 2 IV recomendados (Mejor IV / Mejor IV Gana CMP) del Pokémon
+  // que está abierto en el modal de detalle. Se recalcula solo cuando cambia el
+  // seleccionado o la liga, no en cada render.
+  const statsYIV = useMemo(()=>{
+    if(!selected) return null
+    const base = baseStatsMap[selected.id]
+    if(!base) return null // no vino en moves_actualizados.json para esta especie
+
+    const cpCap = CP_CAPS[liga]
+    const mejorIV = findBestIV(base.atk, base.def, base.hp, cpCap)
+
+    // "Gana CMP": el que ya trae PvPoke precalculado en defaultIVs para el tope
+    // de esta liga. En Master no hay tope, así que siempre es 15/15/15.
+    let ganaCMP: { level:number, atk:number, def:number, hp:number, statAtk:number, statDef:number, statHp:number } | null = null
+    if(liga==='master'){
+      const s = statsAtLevel(base.atk, base.def, base.hp, 15,15,15, 51)
+      ganaCMP = { level:51, atk:15, def:15, hp:15, statAtk:s.atk, statDef:s.def, statHp:s.hp }
+    } else {
+      const key = liga==='super' ? 'cp1500' : 'cp2500'
+      const arr = defaultIVsMap[selected.id]?.[key as 'cp1500'|'cp2500']
+      if(arr && arr.length===4){
+        const s = statsAtLevel(base.atk, base.def, base.hp, arr[1], arr[2], arr[3], arr[0])
+        ganaCMP = { level:arr[0], atk:arr[1], def:arr[2], hp:arr[3], statAtk:s.atk, statDef:s.def, statHp:s.hp }
+      }
+    }
+
+    return { base, mejorIV, ganaCMP }
+  },[selected, baseStatsMap, defaultIVsMap, liga])
+
+  // Mejores Acompañantes: no usa simulación de combate, usa afinidad de tipos +
+  // movimientos + rol (hexágono), igual a como un jugador arma equipo mentalmente.
+  // Reglas:
+  // 1) Se descarta de plano cualquier candidato que comparta AL MENOS UNA de las
+  //    debilidades de tipo del seleccionado (redundancia defensiva = mal acompañante),
+  //    sin importar qué otra cosa tenga a favor.
+  // 2) El resto del pool se limita al Top 100 del ranking de la liga activa (relevancia meta).
+  // 3) De los que pasan el filtro, se necesita AL MENOS una razón positiva para aparecer.
+  // 4) Orden final: por su propia posición en el ranking (mejor rank primero), no por puntaje.
+  const acompanantes = useMemo(()=>{
+    if(!selected) return []
+    const tiposSel = selected.tipos.length ? selected.tipos : (typesMap[selected.name]||[])
+    if(!tiposSel.length) return []
+    const debilidadesSel = weaknessesOf(tiposSel)
+    const baseSel = baseSpeciesId(selected.id)
+
+    const resultado: { compared:Compared, reasons:string[] }[] = []
+
+    universoBusqueda.forEach(c=>{
+      if(baseSpeciesId(c.id)===baseSel) return // no recomendarse a sí mismo ni a sus otras formas
+      if(c.newRank>100) return // solo relevancia meta (Top 100 de la liga activa)
+
+      const tiposC = c.tipos.length ? c.tipos : (typesMap[c.name]||[])
+      if(!tiposC.length) return
+
+      // Filtro duro: si el candidato comparte alguna debilidad con el seleccionado, se descarta entero
+      const debilidadesC = weaknessesOf(tiposC)
+      const comparteDebilidad = debilidadesSel.some(t=> debilidadesC.includes(t))
+      if(comparteDebilidad) return
+
+      const reasons: string[] = []
+
+      if(debilidadesSel.length){
+        const resistidos: string[] = []
+        const neutros: string[] = []
+        debilidadesSel.forEach(t=>{
+          const mult = totalMultiplier(t, tiposC)
+          if(mult<1) resistidos.push(translateType(t))
+          else neutros.push(translateType(t)) // ya no puede ser >1 (se filtró arriba), así que es neutro
+        })
+        if(resistidos.length) reasons.push(`Resiste a ${resistidos.join(', ')}`)
+        if(neutros.length) reasons.push(`Neutro contra ${neutros.join(', ')}`)
+
+        // Movimientos (rápido o cargado) que pegan SÚPER EFECTIVO contra los tipos que
+        // amenazan al seleccionado (ej. un movimiento Bicho contra la debilidad a Planta).
+        const movesC = [...(c.cur.moves?.fastMoves||[]), ...(c.cur.moves?.chargedMoves||[])]
+        const tiposCubiertos = new Set<string>()
+        debilidadesSel.forEach(t=>{
+          const tieneMoveFuerte = movesC.some(mm=>{
+            const mf = movesFullActual[mm.moveId.replace('*','')]
+            return mf && totalMultiplier(mf.type as PokeType, [t]) > 1
+          })
+          if(tieneMoveFuerte) tiposCubiertos.add(translateType(t))
+        })
+        if(tiposCubiertos.size) reasons.push(`Movimientos fuertes contra ${[...tiposCubiertos].join(', ')}`)
+      }
+
+      // Cambio seguro: pocas debilidades propias, sin relación directa al seleccionado
+      if(debilidadesC.length<=2) reasons.push('Cambio seguro (Safe Switch)')
+
+      // Resistencia general (muchas resistencias de tipo)
+      const resistenciasC = resistancesOf(tiposC)
+      if(resistenciasC.length>=8) reasons.push('Gran resistencia')
+      else if(resistenciasC.length>=6) reasons.push('Buena resistencia')
+
+      // Gran Cerrador (score de Closer alto, ya viene calculado en el ranking)
+      const closerScore = c.cur.scores?.[1] || 0
+      if(closerScore>=90) reasons.push('Gran Cerrador')
+
+      if(reasons.length) resultado.push({ compared:c, reasons })
+    })
+
+    return resultado.sort((a,b)=> a.compared.newRank - b.compared.newRank)
+  },[selected, universoBusqueda, typesMap, movesFullActual])
+
   const filteredMejoraron = useMemo(()=>{ const count = mejoraronSel === 'TODOS' ? mejoraronList.length : parseInt(mejoraronSel); return mejoraronList.slice(0, count) },[mejoraronList, mejoraronSel])
   const filteredDecayeron = useMemo(()=>{ if(!decayeronSel) return []; const count = decayeronSel === 'TODOS' ? decayeronList.length : parseInt(decayeronSel); return decayeronList.slice(0, count) },[decayeronList, decayeronSel])
 
@@ -392,35 +652,22 @@ export default function App(){
     return s.dir==='asc' ? ' ▲' : ' ▼'
   }
 
-  // Pokémon (unión de ambas temporadas de la liga activa) que aprenden el movimiento seleccionado.
-  // Importante: un pokémon puede aprender un movimiento en una temporada y no en la otra (ej. Volbeat
-  // con Acoso en Caminos Crepusculares), así que unimos fastMoves/chargedMoves de ambas temporadas
-  // en vez de quedarnos solo con la primera aparición (y así también el resaltado en negrita funciona
-  // sin importar de qué temporada venga el movimiento).
+  // Pokémon que aprenden el movimiento seleccionado. Se prioriza la temporada
+  // ACTUAL (newData/Caminos Crepusculares) porque un Pokémon puede ganar un
+  // movimiento nuevo esa temporada (ej. Volbeat aprende Acoso recién en la
+  // próxima); antes se priorizaba por error la temporada anterior y esos casos
+  // no aparecían. Solo se usa la temporada anterior como respaldo si la especie
+  // no existe en absoluto en la temporada actual.
   const learnersFor = useMemo(()=>{
     if(!moveLearners) return []
     const { moveId } = moveLearners
-    const byId = new Map<string, { display: PokemonEntry, fastMoves: MoveDetail[], chargedMoves: MoveDetail[] }>()
-    ;[...oldData, ...newData].forEach(p=>{
-      const existing = byId.get(p.speciesId)
-      if(!existing){
-        byId.set(p.speciesId, {
-          display: p,
-          fastMoves: [...(p.moves?.fastMoves||[])],
-          chargedMoves: [...(p.moves?.chargedMoves||[])],
-        })
-      } else {
-        const fastIds = new Set(existing.fastMoves.map(m=> m.moveId))
-        ;(p.moves?.fastMoves||[]).forEach(m=>{ if(!fastIds.has(m.moveId)) existing.fastMoves.push(m) })
-        const chargedIds = new Set(existing.chargedMoves.map(m=> m.moveId))
-        ;(p.moves?.chargedMoves||[]).forEach(m=>{ if(!chargedIds.has(m.moveId)) existing.chargedMoves.push(m) })
-        existing.display = p // newData llega después en el array: prioriza mostrar los demás datos (score, etc.) de la temporada actual
-      }
-    })
-    const result: (PokemonEntry & { moves: { fastMoves:MoveDetail[], chargedMoves:MoveDetail[] } })[] = []
-    byId.forEach(({ display, fastMoves, chargedMoves })=>{
-      const learns = fastMoves.some(m=> m.moveId===moveId) || chargedMoves.some(m=> m.moveId===moveId)
-      if(learns) result.push({ ...display, moves: { fastMoves, chargedMoves } })
+    const map = new Map<string, PokemonEntry>()
+    ;[...newData, ...oldData].forEach(p=>{ if(!map.has(p.speciesId)) map.set(p.speciesId, p) })
+    const result: PokemonEntry[] = []
+    map.forEach(p=>{
+      const fastIds = (p.moves?.fastMoves||[]).map(m=> m.moveId)
+      const chargedIds = (p.moves?.chargedMoves||[]).map(m=> m.moveId)
+      if(fastIds.includes(moveId) || chargedIds.includes(moveId)) result.push(p)
     })
     return result.sort((a,b)=> a.speciesName.localeCompare(b.speciesName))
   },[moveLearners, oldData, newData])
@@ -578,7 +825,7 @@ export default function App(){
                         <div style={{flex:1}}>
                           <div className="row">
                             <div style={{display:'flex', flexDirection:'column'}}>
-                              <div className="rank" style={{fontSize:20}}>#{c.newRank} {formatName(c.name)} <span style={{fontWeight:400, fontSize:13, color:'var(--muted)'}}>{c.tipos.length? `(${c.tipos.join('/')})`:''}</span></div>
+                              <div className="rank" style={{fontSize:20}}>#{c.newRank} {formatName(c.name)} <span style={{fontWeight:400, fontSize:13, color:'var(--muted)'}}>{c.tipos.length? `(${translateTypes(c.tipos)})`:''}</span></div>
                               <div style={{display:'flex', gap:12, marginTop:4}}>
                                 <span style={{fontSize:13, fontWeight:700, color:'var(--muted)'}}>Antes <b style={{color:'var(--text)', fontSize:14}}>#{c.oldRank}</b></span>
                                 <span style={{fontSize:13, fontWeight:700, color:'var(--muted)'}}>Ahora <b style={{color:'var(--blue)', fontSize:14}}>#{c.newRank}</b></span>
@@ -614,7 +861,7 @@ export default function App(){
                         <div style={{flex:1}}>
                           <div className="row">
                             <div style={{display:'flex', flexDirection:'column'}}>
-                              <div className="rank" style={{fontSize:20}}>#{c.newRank} {formatName(c.name)} <span style={{fontWeight:400, fontSize:13, color:'var(--muted)'}}>{c.tipos.length? `(${c.tipos.join('/')})`:''}</span></div>
+                              <div className="rank" style={{fontSize:20}}>#{c.newRank} {formatName(c.name)} <span style={{fontWeight:400, fontSize:13, color:'var(--muted)'}}>{c.tipos.length? `(${translateTypes(c.tipos)})`:''}</span></div>
                               <div style={{display:'flex', gap:12, marginTop:4}}>
                                 <span style={{fontSize:13, fontWeight:700, color:'var(--muted)'}}>Antes <b style={{color:'var(--text)', fontSize:14}}>#{c.oldRank}</b></span>
                                 <span style={{fontSize:13, fontWeight:700, color:'var(--muted)'}}>Ahora <b style={{color:'var(--blue)', fontSize:14}}>#{c.newRank}</b></span>
@@ -756,7 +1003,7 @@ export default function App(){
         <div className="modal" onClick={()=> setSelected(null)}>
           <div className="modal-card" onClick={e=> e.stopPropagation()} style={{maxWidth:900}}>
             <div className="row" style={{marginBottom:12}}>
-              <h2 style={{fontSize:22}}>#{selected.newRank} {formatName(selected.name)} <span style={{fontWeight:400, fontSize:14, color:'var(--muted)'}}>{selected.tipos.length? `(${selected.tipos.join('/')})`:''}</span></h2>
+              <h2 style={{fontSize:22}}>#{selected.newRank} {formatName(selected.name)} <span style={{fontWeight:400, fontSize:14, color:'var(--muted)'}}>{selected.tipos.length? `(${translateTypes(selected.tipos)})`:''}</span></h2>
               <button className="btn" onClick={()=> setSelected(null)}>Cerrar</button>
             </div>
 
@@ -786,6 +1033,35 @@ export default function App(){
                 {imagesMap[selected.id] ? <img src={imagesMap[selected.id]} alt={selected.name} style={{width:'100%', height:'100%', objectFit:'contain'}}/> : <span style={{fontSize:11, color:'var(--muted)', textAlign:'center'}}>Espacio<br/>imagen base64<br/>{selected.id}</span>}
               </div>
             </div>
+
+            {statsYIV && (
+              <div style={{marginTop:14, display:'flex', flexDirection:'column', gap:10}}>
+                <div style={{background:'var(--card2)', border:'1px solid var(--border)', borderRadius:10, padding:'10px 12px'}}>
+                  <div className="row">
+                    <b style={{fontSize:13}}>Mejor IV ({statsYIV.mejorIV.atk}/{statsYIV.mejorIV.def}/{statsYIV.mejorIV.hp})</b>
+                    <span className="small">Nivel {statsYIV.mejorIV.level}</span>
+                  </div>
+                  <div style={{display:'flex', gap:16, marginTop:6}}>
+                    <span className="small">Ataque: <b style={{color:'var(--text)'}}>{statsYIV.mejorIV.statAtk.toFixed(1)}</b></span>
+                    <span className="small">Defensa: <b style={{color:'var(--text)'}}>{statsYIV.mejorIV.statDef.toFixed(1)}</b></span>
+                    <span className="small">Salud: <b style={{color:'var(--text)'}}>{statsYIV.mejorIV.statHp}</b></span>
+                  </div>
+                </div>
+                {statsYIV.ganaCMP && (
+                  <div style={{background:'var(--card2)', border:'1px solid var(--border)', borderRadius:10, padding:'10px 12px'}}>
+                    <div className="row">
+                      <b style={{fontSize:13}}>Mejor IV (Gana CMP) ({statsYIV.ganaCMP.atk}/{statsYIV.ganaCMP.def}/{statsYIV.ganaCMP.hp})</b>
+                      <span className="small">Nivel {statsYIV.ganaCMP.level}</span>
+                    </div>
+                    <div style={{display:'flex', gap:16, marginTop:6}}>
+                      <span className="small">Ataque: <b style={{color:'var(--text)'}}>{statsYIV.ganaCMP.statAtk.toFixed(1)}</b></span>
+                      <span className="small">Defensa: <b style={{color:'var(--text)'}}>{statsYIV.ganaCMP.statDef.toFixed(1)}</b></span>
+                      <span className="small">Salud: <b style={{color:'var(--text)'}}>{statsYIV.ganaCMP.statHp}</b></span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             <div style={{marginTop:14}}>
               <b>Ataques Recomendados</b>
@@ -841,6 +1117,29 @@ export default function App(){
                   )
                 })}
               </div>
+            </div>
+
+            <div style={{marginTop:14}}>
+              <div className="row" style={{marginBottom:6}}>
+                <b>Mejores Acompañantes</b>
+                <select className="search" style={{width:'auto', padding:'4px 8px', fontSize:12}} value={acompN} onChange={e=> setAcompN(parseInt(e.target.value))}>
+                  <option value={5}>Top 5</option>
+                  <option value={10}>Top 10</option>
+                  <option value={20}>Top 20</option>
+                </select>
+              </div>
+              {acompanantes.slice(0, acompN).map((a,i)=>(
+                <div key={a.compared.id} className="small" style={{marginTop:6, borderBottom:'1px solid var(--border)', paddingBottom:6}}>
+                  <div className="row">
+                    <span style={{fontWeight:700}}>{formatName(a.compared.name)}</span>
+                    <span style={{fontWeight:700}}>Top #{a.compared.newRank}</span>
+                  </div>
+                  <div style={{color:'var(--muted)', marginTop:2}}>{a.reasons.join(' • ')}</div>
+                </div>
+              ))}
+              {acompanantes.length===0 && (
+                <div className="small" style={{color:'var(--muted)', marginTop:6}}>No se encontraron acompañantes recomendados.</div>
+              )}
             </div>
 
             <div style={{marginTop:18}}>
