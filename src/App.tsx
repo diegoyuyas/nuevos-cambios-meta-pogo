@@ -176,11 +176,11 @@ const TYPE_ES: Record<PokeType,string> = {
   psychic:'Psíquico', bug:'Bicho', rock:'Roca', ghost:'Fantasma', dragon:'Dragón',
   steel:'Acero', dark:'Siniestro', fairy:'Hada'
 }
-function translateType(t:string): string {
+function translateTypeEs(t:string): string {
   return TYPE_ES[t.toLowerCase() as PokeType] || t
 }
-function translateTypes(types:string[]): string {
-  return types.map(translateType).join('/')
+function translateTypesEs(types:string[]): string {
+  return types.map(translateTypeEs).join('/')
 }
 
 type SectionKey = 'rankings' | 'movimientos'
@@ -231,6 +231,16 @@ export default function App(){
     }catch{}
     return 'dark'
   })
+  const [idioma, setIdioma] = useState<'es'|'en'>(()=>{
+    try{
+      const saved = window.localStorage.getItem('comparador_idioma')
+      if(saved==='es' || saved==='en') return saved
+    }catch{}
+    return 'es'
+  })
+  useEffect(()=>{
+    try{ window.localStorage.setItem('comparador_idioma', idioma) }catch{}
+  },[idioma])
 
   useEffect(()=>{
     document.documentElement.setAttribute('data-theme', theme)
@@ -376,8 +386,16 @@ export default function App(){
   const translateMove = (moveId:string) => {
     if(!moveId) return moveId
     const clean = moveId.replace('*','')
+    if(idioma==='en'){
+      const full = movesFullActual[clean] || movesFullActual[moveId]
+      return full?.name || clean.replace(/_/g,' ')
+    }
     return movesEs[clean] || movesEs[moveId] || clean.replace(/_/g,' ')
   }
+  // Envuelven las traducciones de tipo según el botón Español/English (arriba del todo).
+  // Se declaran con el mismo nombre para no tener que tocar el resto de usos en el archivo.
+  const translateType = (t:string): string => idioma==='en' ? capitalize(t) : translateTypeEs(t)
+  const translateTypes = (types:string[]): string => types.map(translateType).join('/')
   const getMoveFull = (moveId:string): MoveFull | null => {
     const clean = moveId.replace('*','')
     // El modal de detalle siempre muestra el pokémon de la temporada "cur" (casi
@@ -508,33 +526,49 @@ export default function App(){
     return universoBusqueda.filter(c=> c.name.toLowerCase().includes(q)).sort((a,b)=> a.newRank - b.newRank)
   },[search, universoBusqueda])
 
-  // Stats base + los 2 IV recomendados (Mejor IV / Mejor IV Gana CMP) del Pokémon
-  // que está abierto en el modal de detalle. Se recalcula solo cuando cambia el
-  // seleccionado o la liga, no en cada render.
-  const statsYIV = useMemo(()=>{
-    if(!selected) return null
-    const base = baseStatsMap[selected.id]
-    if(!base) return null // no vino en moves_actualizados.json para esta especie
-
+  // Calcula los 2 IV recomendados (Mejor IV / Mejor IV Gana CMP) para cualquier
+  // speciesId. Reutilizable tanto en las tarjetas de la lista como en el modal
+  // de detalle. Devuelve null si la especie no vino en moves_actualizados.json.
+  function computeStatsYIV(speciesId:string){
+    const base = baseStatsMap[speciesId]
+    if(!base) return null
     const cpCap = CP_CAPS[liga]
     const mejorIV = findBestIV(base.atk, base.def, base.hp, cpCap)
-
-    // "Gana CMP": el que ya trae PvPoke precalculado en defaultIVs para el tope
-    // de esta liga. En Master no hay tope, así que siempre es 15/15/15.
     let ganaCMP: { level:number, atk:number, def:number, hp:number, statAtk:number, statDef:number, statHp:number } | null = null
     if(liga==='master'){
       const s = statsAtLevel(base.atk, base.def, base.hp, 15,15,15, 51)
       ganaCMP = { level:51, atk:15, def:15, hp:15, statAtk:s.atk, statDef:s.def, statHp:s.hp }
     } else {
       const key = liga==='super' ? 'cp1500' : 'cp2500'
-      const arr = defaultIVsMap[selected.id]?.[key as 'cp1500'|'cp2500']
+      const arr = defaultIVsMap[speciesId]?.[key as 'cp1500'|'cp2500']
       if(arr && arr.length===4){
         const s = statsAtLevel(base.atk, base.def, base.hp, arr[1], arr[2], arr[3], arr[0])
         ganaCMP = { level:arr[0], atk:arr[1], def:arr[2], hp:arr[3], statAtk:s.atk, statDef:s.def, statHp:s.hp }
       }
     }
-
     return { base, mejorIV, ganaCMP }
+  }
+
+  /** Resumen compacto de los 2 IV recomendados, para mostrar dentro de cada tarjeta. */
+  function IVBadgesTarjeta({ speciesId }: { speciesId:string }){
+    const iv = computeStatsYIV(speciesId)
+    if(!iv) return null
+    return (
+      <div style={{display:'flex', gap:6, flexWrap:'wrap', marginTop:6}}>
+        <span className="chip" style={{fontSize:11}}>Mejor IV: {iv.mejorIV.atk}/{iv.mejorIV.def}/{iv.mejorIV.hp} (Nv {iv.mejorIV.level})</span>
+        {iv.ganaCMP && (
+          <span className="chip" style={{fontSize:11}}>Gana CMP: {iv.ganaCMP.atk}/{iv.ganaCMP.def}/{iv.ganaCMP.hp} (Nv {iv.ganaCMP.level})</span>
+        )}
+      </div>
+    )
+  }
+
+  // Stats base + los 2 IV recomendados (Mejor IV / Mejor IV Gana CMP) del Pokémon
+  // que está abierto en el modal de detalle. Se recalcula solo cuando cambia el
+  // seleccionado o la liga, no en cada render.
+  const statsYIV = useMemo(()=>{
+    if(!selected) return null
+    return computeStatsYIV(selected.id)
   },[selected, baseStatsMap, defaultIVsMap, liga])
 
   // Mejores Acompañantes: no usa simulación de combate, usa afinidad de tipos +
@@ -750,9 +784,12 @@ export default function App(){
             ))}
           </div>
 
-          <div style={{display:'flex', justifyContent:'center', marginTop:14}}>
+          <div style={{display:'flex', justifyContent:'center', gap:10, marginTop:14, flexWrap:'wrap'}}>
             <button className="theme-toggle-btn" onClick={()=> setTheme(t=> t==='dark' ? 'light' : 'dark')}>
               {theme==='dark' ? '☀️ Fondo claro' : '🌙 Fondo oscuro'}
+            </button>
+            <button className="theme-toggle-btn" onClick={()=> setIdioma(i=> i==='es' ? 'en' : 'es')}>
+              {idioma==='es' ? '🇬🇧 English' : '🇪🇸 Español'}
             </button>
           </div>
 
@@ -895,9 +932,8 @@ export default function App(){
                             <div><b>Rápido:</b> {translateMove(c.cur.moveset?.[0]||'')}</div>
                             <div><b>Cargados:</b> {(c.cur.moveset?.slice(1)||[]).map(m=> translateMove(m)).join(', ')}</div>
                           </div>
-                          <div style={{display:'flex',gap:4,flexWrap:'wrap', marginTop:6}}>
-                            {c.cur.moveset?.map((m,i)=> <span key={i} className="chip">{translateMove(m)}</span>)}
-                          </div>
+                          <IVBadgesTarjeta speciesId={c.id} />
+                          <button className="btn" style={{marginTop:8}} onClick={(e)=>{ e.stopPropagation(); setSelected(c) }}>Ver información Completa</button>
                         </div>
                       </div>
                     ))}
@@ -929,9 +965,8 @@ export default function App(){
                             <div><b>Rápido:</b> {translateMove(c.cur.moveset?.[0]||'')}</div>
                             <div><b>Cargados:</b> {(c.cur.moveset?.slice(1)||[]).map(m=> translateMove(m)).join(', ')}</div>
                           </div>
-                          <div style={{display:'flex',gap:4,flexWrap:'wrap', marginTop:6}}>
-                            {c.cur.moveset?.map((m,i)=> <span key={i} className="chip">{translateMove(m)}</span>)}
-                          </div>
+                          <IVBadgesTarjeta speciesId={c.id} />
+                          <button className="btn" style={{marginTop:8}} onClick={(e)=>{ e.stopPropagation(); setSelected(c) }}>Ver información Completa</button>
                         </div>
                       </div>
                     ))}
@@ -951,8 +986,9 @@ export default function App(){
                         <div style={{flex:1}}>
                           <div className="rank" style={{fontSize:18}}>#{p.rankActual} {formatName(p.speciesName)}</div>
                           <div className="moves" style={{marginTop:4}}><b>Rápido:</b> {translateMove(p.moveset?.[0])} <br/><b>Cargados:</b> {p.moveset?.slice(1).map((m:string)=> translateMove(m)).join(', ')}</div>
+                          <IVBadgesTarjeta speciesId={p.speciesId} />
                         </div>
-                        <button className="btn" style={{flexShrink:0, whiteSpace:'nowrap'}} onClick={()=> setSelected(buildCompared(p, p.rankActual))}>Más información</button>
+                        <button className="btn" style={{flexShrink:0, whiteSpace:'nowrap'}} onClick={()=> setSelected(buildCompared(p, p.rankActual))}>Ver información Completa</button>
                       </div>
                     ))}
                   </div>
