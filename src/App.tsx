@@ -19,16 +19,20 @@ type PokemonEntry = {
 
 type MoveFull = {
   moveId:string, name:string, nameEs:string, type:string,
-  power:number, energy:number, energyGain:number, isFast:number, cooldown:number, turns:number
+  power:number, energy:number, energyGain:number, isFast:number, cooldown:number, turns:number,
+  buffs?: [number, number], buffTarget?: 'self'|'opponent', buffApplyChance?: number
 }
 
 // Formato de cada movimiento dentro del archivo que se descarga para actualizar
 // los movimientos de la próxima temporada (moves_actualizados.json). Ese archivo
 // puede venir como array plano, o como export completo tipo "gamemaster" con los
 // movimientos anidados en la clave "moves" (así es como lo genera el usuario).
+// buffs = [cambio de Ataque, cambio de Defensa] en niveles (-4 a +4), buffTarget
+// indica a quién afecta, y buffApplyChance la probabilidad (0 a 1) de que ocurra.
 type MoveOverride = {
   moveId:string, name:string, type:string, power:number, energy:number,
-  energyGain:number, cooldown:number, turns:number
+  energyGain:number, cooldown:number, turns:number,
+  buffs?: [number, number], buffTarget?: 'self'|'opponent', buffApplyChance?: number|string
 }
 
 type Compared = {
@@ -241,6 +245,8 @@ export default function App(){
   const [movesActualizados, setMovesActualizados] = useState<MoveOverride[]>([])
   const [baseStatsMap, setBaseStatsMap] = useState<Record<string,{atk:number,def:number,hp:number}>>({})
   const [defaultIVsMap, setDefaultIVsMap] = useState<Record<string,{cp500?:number[],cp1500?:number[],cp2500?:number[]}>>({})
+  const [formChangeMap, setFormChangeMap] = useState<Record<string, any>>({})
+  const [originalFormIdMap, setOriginalFormIdMap] = useState<Record<string,string>>({})
   const [typesMap, setTypesMap] = useState<Record<string,string[]>>({})
   const [imagesMap, setImagesMap] = useState<Record<string,string>>({})
   const [leagueLogos, setLeagueLogos] = useState<Record<string,string>>({})
@@ -317,6 +323,9 @@ export default function App(){
         // pokemon_types.json no existe en el proyecto: se usa el gamemaster (moves_actualizados.json)
         // como fuente de tipos por especie, indexado por speciesName para no romper el resto del código.
         const typesFromGamemaster: Record<string,string[]> = {}
+        // Mecánicas especiales de cambio de forma (Mimikyu, Cramorant, Morpeko, etc.)
+        const formChanges: Record<string, any> = {}
+        const originalFormIds: Record<string,string> = {}
         if(movesActualizadosRes && Array.isArray(movesActualizadosRes.pokemon)){
           movesActualizadosRes.pokemon.forEach((p:any)=>{
             if(p.speciesId && p.baseStats) baseStats[p.speciesId] = p.baseStats
@@ -324,10 +333,12 @@ export default function App(){
             if(p.speciesName && Array.isArray(p.types)){
               typesFromGamemaster[p.speciesName] = p.types.filter((t:string)=> t && t!=='none')
             }
+            if(p.speciesId && p.formChange) formChanges[p.speciesId] = p.formChange
+            if(p.speciesId && p.originalFormId) originalFormIds[p.speciesId] = p.originalFormId
           })
         }
         const mergedTypesMap = { ...typesFromGamemaster, ...(typesRes||{}) }
-        setOldData(a); setNewData(b); setMovesEs(movesRes||{}); setMovesFull(fullMap); setMovesActualizados(overrides); setBaseStatsMap(baseStats); setDefaultIVsMap(defaultIVs); setTypesMap(mergedTypesMap); setImagesMap(imgRes||{}); setLeagueLogos(logosRes||{})
+        setOldData(a); setNewData(b); setMovesEs(movesRes||{}); setMovesFull(fullMap); setMovesActualizados(overrides); setBaseStatsMap(baseStats); setDefaultIVsMap(defaultIVs); setTypesMap(mergedTypesMap); setImagesMap(imgRes||{}); setLeagueLogos(logosRes||{}); setFormChangeMap(formChanges); setOriginalFormIdMap(originalFormIds)
         setSinDatos(a.length===0 && b.length===0)
         setDebug(`Cargados: ${LIGAS[liga].oldLabel} ${a.length} / ${LIGAS[liga].newLabel} ${b.length} / Moves ES ${Object.keys(movesRes||{}).length} / Full ${Object.keys(fullMap).length} / Actualizados ${overrides.length}`)
       }catch(e:any){ setDebug('Error: '+ e.message) }
@@ -354,6 +365,9 @@ export default function App(){
         isFast: base?.isFast ?? 0,
         cooldown: ov.cooldown ?? base?.cooldown ?? 0,
         turns: ov.turns ?? base?.turns ?? Math.round((ov.cooldown ?? base?.cooldown ?? 0)/500),
+        buffs: ov.buffs,
+        buffTarget: ov.buffTarget,
+        buffApplyChance: ov.buffApplyChance!==undefined ? Number(ov.buffApplyChance) : undefined,
       }
     })
     return merged
@@ -369,6 +383,46 @@ export default function App(){
     // El modal de detalle siempre muestra el pokémon de la temporada "cur" (casi
     // siempre Caminos Crepusculares / temporada actual), por eso usa los stats actualizados.
     return movesFullActual[clean] || movesFullActual[moveId] || null
+  }
+
+  /** Describe en español el efecto secundario de un movimiento (subir/bajar Ataque o Defensa). */
+  function formatMoveEffect(move: MoveFull | null): string | null {
+    if(!move || !move.buffs) return null
+    const [atkChange, defChange] = move.buffs
+    if(!atkChange && !defChange) return null
+    const chance = move.buffApplyChance!==undefined ? Math.round(move.buffApplyChance*1000)/10 : 100
+    const quienAtk = move.buffTarget==='self' ? 'su propio' : 'el'
+    const quienDef = move.buffTarget==='self' ? 'su propia' : 'la'
+    const sujeto = move.buffTarget==='self' ? 'usuario' : 'rival'
+    const partes: string[] = []
+    if(atkChange) partes.push(`${atkChange>0?'sube':'baja'} ${Math.abs(atkChange)} nivel${Math.abs(atkChange)>1?'es':''} ${quienAtk} Ataque`)
+    if(defChange) partes.push(`${defChange>0?'sube':'baja'} ${Math.abs(defChange)} nivel${Math.abs(defChange)>1?'es':''} ${quienDef} Defensa`)
+    return `${chance}% de probabilidad de que ${partes.join(' y ')} (${sujeto})`
+  }
+
+  /**
+   * Describe en español las mecánicas especiales de cambio de forma en combate
+   * (Mimikyu, Cramorant, Morpeko y cualquier otro Pokémon con "formChange" en
+   * el gamemaster). No requiere código específico por especie: se basa en el
+   * patrón de la mecánica (protect / toggle / moveIDs), con detalle extra
+   * conocido para Cramorant.
+   */
+  function describeFormChange(fc: any): string | null {
+    if(!fc) return null
+    if(fc.effect==='protect' && fc.trigger==='charged_move_damage'){
+      return 'Disfraz (Manto): la primera vez que recibe daño de un movimiento cargado en el combate, lo bloquea por completo (0 de daño) y después queda con el disfraz roto el resto del combate.'
+    }
+    if(fc.type==='toggle'){
+      return 'Modo Hambriento: cada vez que usa un movimiento cargado, cambia de forma (alterna entre sus 2 modos), lo que cambia el tipo de su movimiento según la forma activa en ese momento.'
+    }
+    if(Array.isArray(fc.moveIDs) && fc.moveIDs.length){
+      const nombres = fc.moveIDs.map((id:string)=> translateMove(id)).join(' o ')
+      return `Gulp Missile: al usar ${nombres}, cambia de forma temporalmente y dispara gratis (sin gastar energía) un ataque extra en el siguiente turno; luego vuelve a su forma normal.`
+    }
+    if(fc.type==='set' && fc.alternativeFormId){
+      return `Puede cambiar de forma en combate según ciertas condiciones (forma alternativa: ${fc.alternativeFormId}).`
+    }
+    return null
   }
 
   const newRankMap = useMemo(()=>{
@@ -934,6 +988,7 @@ export default function App(){
                         <th onClick={()=> toggleSort('fast','energy')}>Energía que genera{sortArrow('fast','energy')}</th>
                         <th onClick={()=> toggleSort('fast','power')}>Daño{sortArrow('fast','power')}</th>
                         <th onClick={()=> toggleSort('fast','turns')}>Turnos{sortArrow('fast','turns')}</th>
+                        <th>Efecto</th>
                         <th></th>
                       </tr>
                     </thead>
@@ -941,15 +996,16 @@ export default function App(){
                       {fastMovesFiltered.map((m,i)=>(
                         <tr key={m.moveId}>
                           <td>{i+1}. {m.nameEs || m.name} <span className="move-en">({m.name})</span></td>
-                          <td>{capitalize(m.type)}</td>
+                          <td>{translateType(m.type)}</td>
                           <td>{m.energyGain}</td>
                           <td>{m.power}</td>
                           <td>{m.turns ?? Math.round((m.cooldown||0)/500)}</td>
+                          <td className="small">{formatMoveEffect(m) || '—'}</td>
                           <td><button className="btn" onClick={()=> setMoveLearners({ moveId:m.moveId, isFast:true })}>Ver Pokémon que aprenden</button></td>
                         </tr>
                       ))}
                       {fastMovesFiltered.length===0 && (
-                        <tr><td colSpan={6} className="small" style={{textAlign:'center', padding:16}}>Sin resultados</td></tr>
+                        <tr><td colSpan={7} className="small" style={{textAlign:'center', padding:16}}>Sin resultados</td></tr>
                       )}
                     </tbody>
                   </table>
@@ -973,6 +1029,7 @@ export default function App(){
                         <th onClick={()=> toggleSort('charged','type')}>Tipo{sortArrow('charged','type')}</th>
                         <th onClick={()=> toggleSort('charged','energy')}>Energía que requiere{sortArrow('charged','energy')}</th>
                         <th onClick={()=> toggleSort('charged','power')}>Daño{sortArrow('charged','power')}</th>
+                        <th>Efecto</th>
                         <th></th>
                       </tr>
                     </thead>
@@ -980,14 +1037,15 @@ export default function App(){
                       {chargedMovesFiltered.map((m,i)=>(
                         <tr key={m.moveId}>
                           <td>{i+1}. {m.nameEs || m.name} <span className="move-en">({m.name})</span></td>
-                          <td>{capitalize(m.type)}</td>
+                          <td>{translateType(m.type)}</td>
                           <td>{m.energy}</td>
                           <td>{m.power}</td>
+                          <td className="small">{formatMoveEffect(m) || '—'}</td>
                           <td><button className="btn" onClick={()=> setMoveLearners({ moveId:m.moveId, isFast:false })}>Ver Pokémon que aprenden</button></td>
                         </tr>
                       ))}
                       {chargedMovesFiltered.length===0 && (
-                        <tr><td colSpan={5} className="small" style={{textAlign:'center', padding:16}}>Sin resultados</td></tr>
+                        <tr><td colSpan={6} className="small" style={{textAlign:'center', padding:16}}>Sin resultados</td></tr>
                       )}
                     </tbody>
                   </table>
@@ -1063,15 +1121,29 @@ export default function App(){
               </div>
             )}
 
+            {(()=>{
+              const fc = formChangeMap[selected.id] || formChangeMap[originalFormIdMap[selected.id]]
+              const desc = describeFormChange(fc)
+              if(!desc) return null
+              return (
+                <div style={{marginTop:14, background:'var(--card2)', border:'1px solid var(--border)', borderRadius:10, padding:'10px 12px'}}>
+                  <b style={{fontSize:13}}>⚡ Mecánica especial</b>
+                  <div className="small" style={{marginTop:4}}>{desc}</div>
+                </div>
+              )
+            })()}
+
             <div style={{marginTop:14}}>
               <b>Ataques Recomendados</b>
               <div style={{marginTop:6, display:'flex', gap:6, flexWrap:'wrap'}}>
                 {selected.cur.moveset?.map((m,i)=>{
                   const full = getMoveFull(m)
+                  const efecto = formatMoveEffect(full)
                   return (
-                    <div key={i} className="chip" style={{background:'var(--accent-chip-bg)', fontSize:12, display:'flex', flexDirection:'column', padding:'6px 8px'}}>
+                    <div key={i} className="chip" style={{background:'var(--accent-chip-bg)', fontSize:12, display:'flex', flexDirection:'column', padding:'6px 8px', maxWidth:220}}>
                       <span>{translateMove(m)}</span>
-                      {full && <span style={{fontSize:9, color:'var(--muted)'}}>{full.type} {(full.energyGain||0) > 0 ? `${full.power}dmg/${full.energyGain}e/${full.turns}t` : `${full.power}dmg/${full.energy}e`}</span>}
+                      {full && <span style={{fontSize:9, color:'var(--muted)'}}>{translateType(full.type)} {(full.energyGain||0) > 0 ? `${full.power}dmg/${full.energyGain}e/${full.turns}t` : `${full.power}dmg/${full.energy}e`}</span>}
+                      {efecto && <span style={{fontSize:9, color:'var(--blue)', marginTop:2}}>{efecto}</span>}
                     </div>
                   )
                 })}
