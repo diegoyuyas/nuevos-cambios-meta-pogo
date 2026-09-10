@@ -118,8 +118,12 @@ body{background:var(--bg);color:var(--text);transition:background .2s ease, colo
 /* Nav de secciones (Rankings / Movimientos) - plateado para contraste en fondo oscuro */
 .section-nav{display:flex;gap:10px;margin:16px 0 4px;flex-wrap:wrap;justify-content:center}
 .section-btn{white-space:nowrap;padding:9px 18px;border-radius:999px;border:1px solid #9ca3af;background:#d1d5db;color:#111318;font-size:13px;font-weight:700;cursor:pointer}
+.liga-combo-wrap{position:relative; display:inline-block}
 .liga-combo{
-  padding:14px 32px;
+  appearance:none;
+  -webkit-appearance:none;
+  -moz-appearance:none;
+  padding:14px 44px 14px 20px;
   font-size:19px;
   font-weight:900;
   font-family:'Arial Black', Arial, sans-serif;
@@ -130,9 +134,19 @@ body{background:var(--bg);color:var(--text);transition:background .2s ease, colo
   color:var(--text);
   text-align:center;
   text-align-last:center;
-  min-width:250px;
+  width:250px;
   box-shadow:0 4px 0 rgba(0,0,0,0.25);
   cursor:pointer;
+}
+.liga-combo-wrap::after{
+  content:'▾';
+  position:absolute;
+  right:18px;
+  top:50%;
+  transform:translateY(-50%);
+  pointer-events:none;
+  font-size:16px;
+  color:var(--text);
 }
 .section-btn:hover{background:#e5e7eb}
 .section-btn.active{background:#f3f4f6;color:#000;font-weight:800;border-color:var(--blue);box-shadow:inset 0 0 0 2px var(--blue)}

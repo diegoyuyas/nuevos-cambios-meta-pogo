@@ -184,7 +184,7 @@ function translateTypesEs(types:string[]): string {
   return types.map(translateTypeEs).join('/')
 }
 
-type SectionKey = 'rankings' | 'movimientos'
+type SectionKey = 'rankings' | 'mejorascaidas' | 'movimientos'
 type MoveSortCol = 'name' | 'type' | 'energy' | 'power' | 'turns'
 type MoveSortDir = 'asc' | 'desc'
 type MoveSortState = { col: MoveSortCol, dir: MoveSortDir }
@@ -243,6 +243,33 @@ function PokeImg({ id, name, placeholder, style }: { id:string, name:string, pla
       style={style || {width:'100%', height:'100%', objectFit:'contain'}}
       onError={()=> setError(true)}
     />
+  )
+}
+
+/** Ícono de un tipo de Pokémon, desde /type-icons/{tipo}.webp (ej. fire.webp). */
+function TypeIcon({ type, size=20 }: { type:string, size?:number }){
+  const [error, setError] = useState(false)
+  if(error) return null
+  return (
+    <img
+      src={`/type-icons/${type.toLowerCase()}.webp`}
+      alt={type}
+      title={translateTypeEs(type)}
+      loading="lazy"
+      width={size}
+      height={size}
+      style={{display:'inline-block', verticalAlign:'middle'}}
+      onError={()=> setError(true)}
+    />
+  )
+}
+/** Fila con 1-2 íconos de tipo, para el costado de cada tarjeta de Pokémon. */
+function TypeIconsRow({ types, size=20 }: { types:string[], size?:number }){
+  if(!types || !types.length) return null
+  return (
+    <div style={{display:'flex', gap:4, flexShrink:0}}>
+      {types.map((t,i)=> <TypeIcon key={i} type={t} size={size} />)}
+    </div>
   )
 }
 
@@ -315,9 +342,9 @@ export default function App(){
   const [chargedSort, setChargedSort] = useState<MoveSortState>({ col:'name', dir:'asc' })
   const [moveLearners, setMoveLearners] = useState<{ moveId:string, isFast:boolean } | null>(null)
   const [moveSearch, setMoveSearch] = useState('')
-  const [fastOpen, setFastOpen] = useState(true)
+  const [movElige, setMovElige] = useState<'rapidos'|'cargados'>('rapidos')
   const [acompN, setAcompN] = useState<number>(5)
-  const [chargedOpen, setChargedOpen] = useState(true)
+  const [mejorasCaidasTipo, setMejorasCaidasTipo] = useState<''|'mejoraron'|'decayeron'>('')
 
   useEffect(()=>{
     async function load(){
@@ -699,6 +726,7 @@ export default function App(){
     setDecayeronSel('')
     setRankingCompletoSel('')
     setActiveTab('mejoraron')
+    setMejorasCaidasTipo('')
   }
 
   const displayList = activeTab==='mejoraron' ? filteredMejoraron : activeTab==='decayeron' ? filteredDecayeron : []
@@ -791,19 +819,23 @@ export default function App(){
               👁️ Visitas: {visitas.toLocaleString('es-PE')}
             </div>
           )}
-          <h1 className="main-title" style={{textAlign:'center'}}>SELECCIONAR LIGA A ANALIZAR:</h1>
+          <h1 className="main-title" style={{textAlign:'center'}}>SELECCIONA TU LIGA A ANALIZAR:</h1>
 
-          <div className="league-btns" style={{justifyContent:'center', marginTop:16}}>
-            {(Object.keys(LIGAS) as LigaKey[]).map(key=>(
-              <button
-                key={key}
-                className={`league-btn ${LIGAS[key].className} ${liga===key ? 'pressed' : ''}`}
-                onClick={()=> handleLigaChange(key)}
-              >
-                {leagueLogos[key] && <img src={leagueLogos[key]} alt="" width={24} height={24} />}
-                {LIGAS[key].label}
-              </button>
-            ))}
+          <div style={{display:'flex', justifyContent:'center', marginTop:16}}>
+            <div style={{display:'flex', flexDirection:'column', alignItems:'center', gap:8}}>
+              {leagueLogos[liga] && <img src={leagueLogos[liga]} alt="" width={40} height={40} />}
+              <div className="liga-combo-wrap">
+                <select
+                  className="liga-combo"
+                  value={liga}
+                  onChange={e=> handleLigaChange(e.target.value as LigaKey)}
+                >
+                  {(Object.keys(LIGAS) as LigaKey[]).map(key=>(
+                    <option key={key} value={key}>{LIGAS[key].label}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
           </div>
 
           <div style={{display:'flex', justifyContent:'center', gap:10, marginTop:14, flexWrap:'wrap'}}>
@@ -816,11 +848,9 @@ export default function App(){
           </div>
 
           <p className="welcome-banner" style={{marginTop:28, textAlign:'center'}}>
-            Bienvenido, tómate tu tiempo en analizar para aprender todo sobre la nueva temporada.
-            <br/><br/>
-            Puedes apoyar mi canal de YouTube llamado{' '}
+            Como señal de apoyo, suscríbete gratis a mi canal de YouTube:{' '}
             <a href="https://www.youtube.com/@EntrenadorGuayD" target="_blank" rel="noopener noreferrer">Entrenador GuayD</a>
-            {' '}suscribiéndote y activando las notificaciones como señal de apoyo 🔔
+            {' '}muchas gracias.
           </p>
         </div>
       </div>
@@ -829,6 +859,7 @@ export default function App(){
         <div className="container">
           <div className="section-nav" style={{justifyContent:'center', margin:0}}>
             <button className={`section-btn ${section==='rankings' ? 'active' : ''}`} onClick={()=> setSection('rankings')}>📊 Rankings</button>
+            <button className={`section-btn ${section==='mejorascaidas' ? 'active' : ''}`} onClick={()=> setSection('mejorascaidas')}>🔀 Mejoras / Caídas</button>
             <button className={`section-btn ${section==='movimientos' ? 'active' : ''}`} onClick={()=> setSection('movimientos')}>⚔️ Movimientos</button>
           </div>
         </div>
@@ -855,71 +886,17 @@ export default function App(){
           <>
             {!sinDatos && (
               <div className="small" style={{textAlign:'center', lineHeight:1.6}}>
-                Utiliza el buscador o selecciona los filtros para saber más de los cambios.
+                Ranking completo de la temporada actual ({LIGAS[liga].newLabel}) para {LIGAS[liga].label}.
                 <br/>
-                También puedes ordenarlos para saber cuántas posiciones subieron.
+                Usa el buscador para encontrar un Pokémon puntual.
               </div>
             )}
 
             <div className={`filter-frame ${search.trim() ? 'filter-frame-active' : ''}`}>
-              <input className="search" placeholder="Buscar Pokémon... ej: Azumarill, Quagsire, Tinkaton" value={search} onChange={e=> setSearch(e.target.value)} />
+              <input className="search search-highlight" placeholder="🔎 Buscar Pokémon... ej: Azumarill, Quagsire, Tinkaton" value={search} onChange={e=> setSearch(e.target.value)} />
             </div>
 
-            <div style={{display:'flex', gap:10, flexWrap:'wrap'}}>
-              <div className={`filter-frame ${activeFilterKey==='mejoraron' ? 'filter-frame-active' : ''}`} style={{flex:1, minWidth:220, display:'flex', flexDirection:'column', gap:10}}>
-                <div>
-                  <label className="filter-label-big">🚀 Pokémon que Mejoraron</label>
-                  <select className="search" value={mejoraronSel} onChange={e=> handleMejoraronChange(e.target.value)}>
-                    <option value="10">Top 10 Mejoraron</option>
-                    <option value="30">Top 30 Mejoraron</option>
-                    <option value="50">Top 50 Mejoraron</option>
-                    <option value="100">Top 100 Mejoraron</option>
-                    <option value="200">Top 200 Mejoraron</option>
-                    <option value="TODOS">TODOS los que mejoraron</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="small" style={{display:'block', marginBottom:4}}>Ordenar por</label>
-                  <select className="search" value={ordenMejoraron} onChange={e=> setOrdenMejoraron(e.target.value as 'ranking'|'escalones')}>
-                    <option value="ranking">N° en Ranking</option>
-                    <option value="escalones">N° de Escalones</option>
-                  </select>
-                </div>
-              </div>
-              <div className={`filter-frame ${activeFilterKey==='decayeron' ? 'filter-frame-active' : ''}`} style={{flex:1, minWidth:220, display:'flex', flexDirection:'column', gap:10}}>
-                <div>
-                  <label className="filter-label-big">📉 Pokémon que Decayeron</label>
-                  <select className="search" value={decayeronSel} onChange={e=> handleDecayeronChange(e.target.value)}>
-                    <option value="">-- Seleccionar --</option>
-                    <option value="10">Top 10 Decayeron</option>
-                    <option value="20">Top 20 Decayeron</option>
-                    <option value="30">Top 30 Decayeron</option>
-                    <option value="50">Top 50 Decayeron</option>
-                    <option value="200">Top 200 Decayeron</option>
-                    <option value="TODOS">TODOS los que decayeron</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="small" style={{display:'block', marginBottom:4}}>Ordenar por</label>
-                  <select className="search" value={ordenDecayeron} onChange={e=> setOrdenDecayeron(e.target.value as 'ranking'|'escalones')}>
-                    <option value="ranking">N° en Ranking</option>
-                    <option value="escalones">N° de Escalones</option>
-                  </select>
-                </div>
-              </div>
-              <div className={`filter-frame ${activeFilterKey==='completo' ? 'filter-frame-active' : ''}`} style={{flex:1, minWidth:220, display:'flex', flexDirection:'column', gap:10}}>
-                <div>
-                  <label className="filter-label-big">📊 Ver todo el Ranking</label>
-                  <select className="search" value={rankingCompletoSel} onChange={e=> handleCompletoChange(e.target.value)}>
-                    <option value="">-- Seleccionar Ranking --</option>
-                    <option value="caminos">Ranking Temporada Actual</option>
-                    <option value="siempre">Ranking Temporada Anterior</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            <div className={`filter-frame ${(activeFilterKey || search.trim()) ? 'filter-frame-active' : ''}`}>
+            <div className="filter-frame">
               {searchResults!==null ? (
                 <>
                   {searchResults.length===0 ? (
@@ -927,7 +904,7 @@ export default function App(){
                       No se encontró ningún Pokémon para "{search}" en {LIGAS[liga].label}. Si es un legendario/mítico, puede que no sea elegible por CP para esta liga (no puede bajar de su tope de CP) — prueba buscarlo en Liga Master.
                     </div>
                   ) : (
-                    <div className="small">{searchResults.length} resultado(s) para "{search}" • búsqueda en todo el ranking, sin importar filtros</div>
+                    <div className="small">{searchResults.length} resultado(s) para "{search}"</div>
                   )}
                   <div className="grid" style={{marginTop:10}}>
                     {searchResults.map(c=>(
@@ -939,16 +916,8 @@ export default function App(){
                           <div className="row">
                             <div style={{display:'flex', flexDirection:'column'}}>
                               <div className="rank" style={{fontSize:20}}>#{c.newRank} {formatName(c.name)} <span style={{fontWeight:400, fontSize:13, color:'var(--muted)'}}>{c.tipos.length? `(${translateTypes(c.tipos)})`:''}</span></div>
-                              <div style={{display:'flex', gap:12, marginTop:4}}>
-                                <span style={{fontSize:13, fontWeight:700, color:'var(--muted)'}}>Antes <b style={{color:'var(--text)', fontSize:14}}>#{c.oldRank}</b></span>
-                                <span style={{fontSize:13, fontWeight:700, color:'var(--muted)'}}>Ahora <b style={{color:'var(--blue)', fontSize:14}}>#{c.newRank}</b></span>
-                              </div>
                             </div>
-                            {(c.delta!==0 || c.mejora!==0) && (
-                              <span className="badge" style={{fontSize:12, padding:'4px 8px', background: c.delta>0 ? 'var(--red-bg)' : 'var(--green-bg)', color: c.delta>0 ? 'var(--red-text)' : 'var(--green-text)', display:'flex', gap:4, alignItems:'center'}}>
-                                {c.delta>0 ? `cayó: ▼ ${c.delta}` : `escaló: ▲ +${c.mejora}`}
-                              </span>
-                            )}
+                            <TypeIconsRow types={c.tipos} />
                           </div>
                           <div className="moves" style={{marginTop:8}}>
                             <div><b>Rápido:</b> {translateMove(c.cur.moveset?.[0]||'')}</div>
@@ -961,52 +930,18 @@ export default function App(){
                     ))}
                   </div>
                 </>
-              ) : activeTab!=='completo' && (
+              ) : (
                 <>
-                  <div className="small">{displayList.length} resultados • {activeTab==='mejoraron' ? `Top ${mejoraronSel} que mejoraron (${ordenMejoraron==='escalones' ? 'orden por escalones' : 'orden por ranking'})` : `Top ${decayeronSel} que decayeron (${ordenDecayeron==='escalones' ? 'orden por escalones' : 'orden por ranking'})`} • Click en el mismo filtro recarga</div>
+                  <div className="small">Mostrando {LIGAS[liga].newLabel} - {completoCaminos.length} Pokémon</div>
                   <div className="grid" style={{marginTop:10}}>
-                    {displayList.map(c=>(
-                      <div key={c.id} className="card" onClick={()=> setSelected(c)} style={{cursor:'pointer', display:'flex', gap:10}}>
-                        <div style={{width:64, height:64, background:'var(--card2)', borderRadius:12, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, border:'1px solid var(--border)', overflow:'hidden'}}>
-                          <PokeImg id={c.id} name={c.name} />
-                        </div>
-                        <div style={{flex:1}}>
-                          <div className="row">
-                            <div style={{display:'flex', flexDirection:'column'}}>
-                              <div className="rank" style={{fontSize:20}}>#{c.newRank} {formatName(c.name)} <span style={{fontWeight:400, fontSize:13, color:'var(--muted)'}}>{c.tipos.length? `(${translateTypes(c.tipos)})`:''}</span></div>
-                              <div style={{display:'flex', gap:12, marginTop:4}}>
-                                <span style={{fontSize:13, fontWeight:700, color:'var(--muted)'}}>Antes <b style={{color:'var(--text)', fontSize:14}}>#{c.oldRank}</b></span>
-                                <span style={{fontSize:13, fontWeight:700, color:'var(--muted)'}}>Ahora <b style={{color:'var(--blue)', fontSize:14}}>#{c.newRank}</b></span>
-                              </div>
-                            </div>
-                            <span className="badge" style={{fontSize:12, padding:'4px 8px', background: c.delta>0 ? 'var(--red-bg)' : 'var(--green-bg)', color: c.delta>0 ? 'var(--red-text)' : 'var(--green-text)', display:'flex', gap:4, alignItems:'center'}}>
-                              {c.delta>0 ? `cayó: ▼ ${c.delta}` : `escaló: ▲ +${c.mejora}`}
-                            </span>
-                          </div>
-                          <div className="moves" style={{marginTop:8}}>
-                            <div><b>Rápido:</b> {translateMove(c.cur.moveset?.[0]||'')}</div>
-                            <div><b>Cargados:</b> {(c.cur.moveset?.slice(1)||[]).map(m=> translateMove(m)).join(', ')}</div>
-                          </div>
-                          <IVBadgesTarjeta speciesId={c.id} />
-                          <button className="btn" style={{marginTop:8}} onClick={(e)=>{ e.stopPropagation(); setSelected(c) }}>Ver información Completa</button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              )}
-
-              {searchResults===null && activeTab==='completo' && (
-                <>
-                  <div className="small">Mostrando {rankingCompletoSel==='caminos' ? LIGAS[liga].newLabel : LIGAS[liga].oldLabel} - {rankingCompletoSel==='caminos' ? completoCaminos.length : completoSiempre.length} Pokémon</div>
-                  <div className="grid" style={{marginTop:10}}>
-                    {(rankingCompletoSel==='caminos' ? completoCaminos : completoSiempre).map((p:any)=>(
+                    {completoCaminos.map((p:any)=>(
                       <div key={p.speciesId} className="card" style={{display:'flex', gap:10, alignItems:'center'}}>
                         <div style={{width:56, height:56, background:'var(--card2)', borderRadius:10, display:'flex', alignItems:'center', justifyContent:'center', border:'1px solid var(--border)', flexShrink:0}}>
                           <PokeImg id={p.speciesId} name={p.speciesName} />
                         </div>
                         <div style={{flex:1}}>
                           <div className="rank" style={{fontSize:18}}>#{p.rankActual} {formatName(p.speciesName)}</div>
+                          <TypeIconsRow types={typesMap[p.speciesName]||[]} />
                           <div className="moves" style={{marginTop:4}}><b>Rápido:</b> {translateMove(p.moveset?.[0])} <br/><b>Cargados:</b> {p.moveset?.slice(1).map((m:string)=> translateMove(m)).join(', ')}</div>
                           <IVBadgesTarjeta speciesId={p.speciesId} />
                         </div>
@@ -1020,6 +955,131 @@ export default function App(){
           </>
         )}
 
+        {section==='mejorascaidas' && (
+          <>
+            <div className="filter-frame filter-frame-active">
+              <label className="filter-label-big">🔀 ¿Qué quieres ver?</label>
+              <select
+                className="search"
+                value={mejorasCaidasTipo}
+                onChange={e=> setMejorasCaidasTipo(e.target.value as ''|'mejoraron'|'decayeron')}
+              >
+                <option value="">-- Selecciona: Pokémon que mejoraron o Pokémon que decayeron --</option>
+                <option value="mejoraron">🚀 Pokémon que mejoraron</option>
+                <option value="decayeron">📉 Pokémon que decayeron</option>
+              </select>
+            </div>
+
+            {mejorasCaidasTipo==='mejoraron' && (
+              <div className="filter-frame filter-frame-active" style={{display:'flex', flexDirection:'column', gap:10}}>
+                <div style={{display:'flex', gap:10, flexWrap:'wrap'}}>
+                  <div style={{flex:1, minWidth:200}}>
+                    <label className="small" style={{display:'block', marginBottom:4}}>Cuántos mostrar</label>
+                    <select className="search" value={mejoraronSel} onChange={e=> handleMejoraronChange(e.target.value)}>
+                      <option value="10">Top 10 Mejoraron</option>
+                      <option value="30">Top 30 Mejoraron</option>
+                      <option value="50">Top 50 Mejoraron</option>
+                      <option value="100">Top 100 Mejoraron</option>
+                      <option value="200">Top 200 Mejoraron</option>
+                      <option value="TODOS">TODOS los que mejoraron</option>
+                    </select>
+                  </div>
+                  <div style={{flex:1, minWidth:200}}>
+                    <label className="small" style={{display:'block', marginBottom:4}}>Ordenar por</label>
+                    <select className="search" value={ordenMejoraron} onChange={e=> setOrdenMejoraron(e.target.value as 'ranking'|'escalones')}>
+                      <option value="ranking">N° en Ranking</option>
+                      <option value="escalones">N° de Escalones</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="small">{filteredMejoraron.length} resultados • Top {mejoraronSel} que mejoraron ({ordenMejoraron==='escalones' ? 'orden por escalones' : 'orden por ranking'})</div>
+                <div className="grid">
+                  {filteredMejoraron.map(c=>(
+                    <div key={c.id} className="card" onClick={()=> setSelected(c)} style={{cursor:'pointer', display:'flex', gap:10}}>
+                      <div style={{width:64, height:64, background:'var(--card2)', borderRadius:12, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, border:'1px solid var(--border)', overflow:'hidden'}}>
+                        <PokeImg id={c.id} name={c.name} />
+                      </div>
+                      <div style={{flex:1}}>
+                        <div className="row">
+                          <div style={{display:'flex', flexDirection:'column'}}>
+                            <div className="rank" style={{fontSize:20}}>#{c.newRank} {formatName(c.name)} <span style={{fontWeight:400, fontSize:13, color:'var(--muted)'}}>{c.tipos.length? `(${translateTypes(c.tipos)})`:''}</span></div>
+                            <div style={{display:'flex', gap:12, marginTop:4}}>
+                              <span style={{fontSize:13, fontWeight:700, color:'var(--muted)'}}>Antes <b style={{color:'var(--text)', fontSize:14}}>#{c.oldRank}</b></span>
+                              <span style={{fontSize:13, fontWeight:700, color:'var(--muted)'}}>Ahora <b style={{color:'var(--blue)', fontSize:14}}>#{c.newRank}</b></span>
+                            </div>
+                          </div>
+                          <span className="badge" style={{fontSize:12, padding:'4px 8px', background:'var(--green-bg)', color:'var(--green-text)', display:'flex', gap:4, alignItems:'center'}}>escaló: ▲ +{c.mejora}</span>
+                          <TypeIconsRow types={c.tipos} />
+                        </div>
+                        <div className="moves" style={{marginTop:8}}>
+                          <div><b>Rápido:</b> {translateMove(c.cur.moveset?.[0]||'')}</div>
+                          <div><b>Cargados:</b> {(c.cur.moveset?.slice(1)||[]).map(m=> translateMove(m)).join(', ')}</div>
+                        </div>
+                        <IVBadgesTarjeta speciesId={c.id} />
+                        <button className="btn" style={{marginTop:8}} onClick={(e)=>{ e.stopPropagation(); setSelected(c) }}>Ver información Completa</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {mejorasCaidasTipo==='decayeron' && (
+              <div className="filter-frame filter-frame-active" style={{display:'flex', flexDirection:'column', gap:10}}>
+                <div style={{display:'flex', gap:10, flexWrap:'wrap'}}>
+                  <div style={{flex:1, minWidth:200}}>
+                    <label className="small" style={{display:'block', marginBottom:4}}>Cuántos mostrar</label>
+                    <select className="search" value={decayeronSel || '50'} onChange={e=> handleDecayeronChange(e.target.value)}>
+                      <option value="10">Top 10 Decayeron</option>
+                      <option value="20">Top 20 Decayeron</option>
+                      <option value="30">Top 30 Decayeron</option>
+                      <option value="50">Top 50 Decayeron</option>
+                      <option value="200">Top 200 Decayeron</option>
+                      <option value="TODOS">TODOS los que decayeron</option>
+                    </select>
+                  </div>
+                  <div style={{flex:1, minWidth:200}}>
+                    <label className="small" style={{display:'block', marginBottom:4}}>Ordenar por</label>
+                    <select className="search" value={ordenDecayeron} onChange={e=> setOrdenDecayeron(e.target.value as 'ranking'|'escalones')}>
+                      <option value="ranking">N° en Ranking</option>
+                      <option value="escalones">N° de Escalones</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="small">{filteredDecayeron.length} resultados • Top {decayeronSel || '50'} que decayeron ({ordenDecayeron==='escalones' ? 'orden por escalones' : 'orden por ranking'})</div>
+                <div className="grid">
+                  {filteredDecayeron.map(c=>(
+                    <div key={c.id} className="card" onClick={()=> setSelected(c)} style={{cursor:'pointer', display:'flex', gap:10}}>
+                      <div style={{width:64, height:64, background:'var(--card2)', borderRadius:12, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, border:'1px solid var(--border)', overflow:'hidden'}}>
+                        <PokeImg id={c.id} name={c.name} />
+                      </div>
+                      <div style={{flex:1}}>
+                        <div className="row">
+                          <div style={{display:'flex', flexDirection:'column'}}>
+                            <div className="rank" style={{fontSize:20}}>#{c.newRank} {formatName(c.name)} <span style={{fontWeight:400, fontSize:13, color:'var(--muted)'}}>{c.tipos.length? `(${translateTypes(c.tipos)})`:''}</span></div>
+                            <div style={{display:'flex', gap:12, marginTop:4}}>
+                              <span style={{fontSize:13, fontWeight:700, color:'var(--muted)'}}>Antes <b style={{color:'var(--text)', fontSize:14}}>#{c.oldRank}</b></span>
+                              <span style={{fontSize:13, fontWeight:700, color:'var(--muted)'}}>Ahora <b style={{color:'var(--blue)', fontSize:14}}>#{c.newRank}</b></span>
+                            </div>
+                          </div>
+                          <span className="badge" style={{fontSize:12, padding:'4px 8px', background:'var(--red-bg)', color:'var(--red-text)', display:'flex', gap:4, alignItems:'center'}}>cayó: ▼ {c.delta}</span>
+                          <TypeIconsRow types={c.tipos} />
+                        </div>
+                        <div className="moves" style={{marginTop:8}}>
+                          <div><b>Rápido:</b> {translateMove(c.cur.moveset?.[0]||'')}</div>
+                          <div><b>Cargados:</b> {(c.cur.moveset?.slice(1)||[]).map(m=> translateMove(m)).join(', ')}</div>
+                        </div>
+                        <IVBadgesTarjeta speciesId={c.id} />
+                        <button className="btn" style={{marginTop:8}} onClick={(e)=>{ e.stopPropagation(); setSelected(c) }}>Ver información Completa</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
         {section==='movimientos' && (
           <div style={{display:'flex', flexDirection:'column', gap:16}}>
             <input
@@ -1028,89 +1088,84 @@ export default function App(){
               value={moveSearch}
               onChange={e=> setMoveSearch(e.target.value)}
             />
-            <div className="moves-columns">
-              <div>
-                <div className="moves-section-header">
-                  <h2 style={{fontSize:18}}>⚡ Movimientos Rápidos <span className="small">({fastMovesFiltered.length})</span></h2>
-                  <button className="btn collapse-btn" onClick={()=> setFastOpen(o=> !o)} aria-label="Mostrar/ocultar Movimientos Rápidos">
-                    {fastOpen ? '▲ Ocultar' : '▼ Mostrar'}
-                  </button>
-                </div>
-                {fastOpen && (
-                <div className="moves-table-wrap">
-                  <table className="moves-table">
-                    <thead>
-                      <tr>
-                        <th onClick={()=> toggleSort('fast','name')}>Nombre{sortArrow('fast','name')}</th>
-                        <th onClick={()=> toggleSort('fast','type')}>Tipo{sortArrow('fast','type')}</th>
-                        <th onClick={()=> toggleSort('fast','energy')}>Energía que genera{sortArrow('fast','energy')}</th>
-                        <th onClick={()=> toggleSort('fast','power')}>Daño{sortArrow('fast','power')}</th>
-                        <th onClick={()=> toggleSort('fast','turns')}>Turnos{sortArrow('fast','turns')}</th>
-                        <th>Efecto</th>
-                        <th></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {fastMovesFiltered.map((m,i)=>(
-                        <tr key={m.moveId}>
-                          <td>{i+1}. {m.nameEs || m.name} <span className="move-en">({m.name})</span></td>
-                          <td>{translateType(m.type)}</td>
-                          <td>{m.energyGain}</td>
-                          <td>{m.power}</td>
-                          <td>{m.turns ?? Math.round((m.cooldown||0)/500)}</td>
-                          <td className="small">{formatMoveEffect(m) || '—'}</td>
-                          <td><button className="btn" onClick={()=> setMoveLearners({ moveId:m.moveId, isFast:true })}>Ver Pokémon que aprenden</button></td>
-                        </tr>
-                      ))}
-                      {fastMovesFiltered.length===0 && (
-                        <tr><td colSpan={7} className="small" style={{textAlign:'center', padding:16}}>Sin resultados</td></tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-                )}
-              </div>
 
-              <div>
-                <div className="moves-section-header">
-                  <h2 style={{fontSize:18}}>💥 Movimientos Cargados <span className="small">({chargedMovesFiltered.length})</span></h2>
-                  <button className="btn collapse-btn" onClick={()=> setChargedOpen(o=> !o)} aria-label="Mostrar/ocultar Movimientos Cargados">
-                    {chargedOpen ? '▲ Ocultar' : '▼ Mostrar'}
-                  </button>
-                </div>
-                {chargedOpen && (
-                <div className="moves-table-wrap">
-                  <table className="moves-table">
-                    <thead>
-                      <tr>
-                        <th onClick={()=> toggleSort('charged','name')}>Nombre{sortArrow('charged','name')}</th>
-                        <th onClick={()=> toggleSort('charged','type')}>Tipo{sortArrow('charged','type')}</th>
-                        <th onClick={()=> toggleSort('charged','energy')}>Energía que requiere{sortArrow('charged','energy')}</th>
-                        <th onClick={()=> toggleSort('charged','power')}>Daño{sortArrow('charged','power')}</th>
-                        <th>Efecto</th>
-                        <th></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {chargedMovesFiltered.map((m,i)=>(
-                        <tr key={m.moveId}>
-                          <td>{i+1}. {m.nameEs || m.name} <span className="move-en">({m.name})</span></td>
-                          <td>{translateType(m.type)}</td>
-                          <td>{m.energy}</td>
-                          <td>{m.power}</td>
-                          <td className="small">{formatMoveEffect(m) || '—'}</td>
-                          <td><button className="btn" onClick={()=> setMoveLearners({ moveId:m.moveId, isFast:false })}>Ver Pokémon que aprenden</button></td>
-                        </tr>
-                      ))}
-                      {chargedMovesFiltered.length===0 && (
-                        <tr><td colSpan={6} className="small" style={{textAlign:'center', padding:16}}>Sin resultados</td></tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-                )}
-              </div>
+            <div className="filter-frame filter-frame-active">
+              <label className="filter-label-big">Elige:</label>
+              <select className="search" value={movElige} onChange={e=> setMovElige(e.target.value as 'rapidos'|'cargados')}>
+                <option value="rapidos">⚡ Mov. Rápidos</option>
+                <option value="cargados">💥 Mov. Cargados</option>
+              </select>
             </div>
+
+            <div className="small" style={{color:'var(--muted)'}}>
+              <b>Leyenda:</b> T: Tipo • E: Energía que genera{movElige==='cargados' ? ' (o requiere)' : ''} • D: Daño{movElige==='rapidos' ? ' • T: Turnos' : ''} • EF: Efecto
+            </div>
+
+            {movElige==='rapidos' && (
+              <div className="moves-table-wrap">
+                <table className="moves-table">
+                  <thead>
+                    <tr>
+                      <th onClick={()=> toggleSort('fast','name')}>Nombre{sortArrow('fast','name')}</th>
+                      <th onClick={()=> toggleSort('fast','type')}>T{sortArrow('fast','type')}</th>
+                      <th onClick={()=> toggleSort('fast','energy')}>E{sortArrow('fast','energy')}</th>
+                      <th onClick={()=> toggleSort('fast','power')}>D{sortArrow('fast','power')}</th>
+                      <th onClick={()=> toggleSort('fast','turns')}>T{sortArrow('fast','turns')}</th>
+                      <th>EF</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {fastMovesFiltered.map((m,i)=>(
+                      <tr key={m.moveId}>
+                        <td>{i+1}. {m.nameEs || m.name} <span className="move-en">({m.name})</span></td>
+                        <td style={{display:"flex", alignItems:"center", gap:4}}><TypeIcon type={m.type} size={18} /> {translateType(m.type)}</td>
+                        <td>{m.energyGain}</td>
+                        <td>{m.power}</td>
+                        <td>{m.turns ?? Math.round((m.cooldown||0)/500)}</td>
+                        <td className="small">{formatMoveEffect(m) || '—'}</td>
+                        <td><button className="btn" onClick={()=> setMoveLearners({ moveId:m.moveId, isFast:true })}>Ver Pokémon</button></td>
+                      </tr>
+                    ))}
+                    {fastMovesFiltered.length===0 && (
+                      <tr><td colSpan={7} className="small" style={{textAlign:'center', padding:16}}>Sin resultados</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {movElige==='cargados' && (
+              <div className="moves-table-wrap">
+                <table className="moves-table">
+                  <thead>
+                    <tr>
+                      <th onClick={()=> toggleSort('charged','name')}>Nombre{sortArrow('charged','name')}</th>
+                      <th onClick={()=> toggleSort('charged','type')}>T{sortArrow('charged','type')}</th>
+                      <th onClick={()=> toggleSort('charged','energy')}>E{sortArrow('charged','energy')}</th>
+                      <th onClick={()=> toggleSort('charged','power')}>D{sortArrow('charged','power')}</th>
+                      <th>EF</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {chargedMovesFiltered.map((m,i)=>(
+                      <tr key={m.moveId}>
+                        <td>{i+1}. {m.nameEs || m.name} <span className="move-en">({m.name})</span></td>
+                        <td style={{display:"flex", alignItems:"center", gap:4}}><TypeIcon type={m.type} size={18} /> {translateType(m.type)}</td>
+                        <td>{m.energy}</td>
+                        <td>{m.power}</td>
+                        <td className="small">{formatMoveEffect(m) || '—'}</td>
+                        <td><button className="btn" onClick={()=> setMoveLearners({ moveId:m.moveId, isFast:false })}>Ver Pokémon</button></td>
+                      </tr>
+                    ))}
+                    {chargedMovesFiltered.length===0 && (
+                      <tr><td colSpan={6} className="small" style={{textAlign:'center', padding:16}}>Sin resultados</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -1119,22 +1174,15 @@ export default function App(){
         <div className="modal" onClick={()=> setSelected(null)}>
           <div className="modal-card" onClick={e=> e.stopPropagation()} style={{maxWidth:900}}>
             <div className="row" style={{marginBottom:12}}>
-              <h2 style={{fontSize:22}}>#{selected.newRank} {formatName(selected.name)} <span style={{fontWeight:400, fontSize:14, color:'var(--muted)'}}>{selected.tipos.length? `(${translateTypes(selected.tipos)})`:''}</span></h2>
+              <h2 style={{fontSize:22, display:'flex', alignItems:'center', gap:8}}>
+                #{selected.newRank} {formatName(selected.name)} <span style={{fontWeight:400, fontSize:14, color:'var(--muted)'}}>{selected.tipos.length? `(${translateTypes(selected.tipos)})`:''}</span>
+                <TypeIconsRow types={selected.tipos} size={24} />
+              </h2>
               <button className="btn" onClick={()=> setSelected(null)}>Cerrar</button>
             </div>
 
             {/* 8. Recuadros más pequeños + espacio para imagen base64 */}
             <div className="detail-grid-top">
-              <div style={{display:'flex', flexDirection:'column', gap:8}}>
-                <div style={{background:'var(--card2)', border:'1px solid var(--border)', borderRadius:10, padding:'8px 10px'}}>
-                  <b style={{fontSize:14, color:'var(--muted)', display:'block'}}>Ranking Antiguo</b>
-                  <span style={{fontSize:22, fontWeight:800}}>#{selected.oldRank}</span>
-                </div>
-                <div style={{background:'var(--card2)', border:'1px solid var(--border)', borderRadius:10, padding:'8px 10px'}}>
-                  <b style={{fontSize:14, color:'var(--muted)', display:'block'}}>Puestos Subidos</b>
-                  <span style={{fontSize:22, fontWeight:800, color: selected.delta>0 ? 'var(--red)' : 'var(--green)'}}>{selected.delta>0 ? `▼ ${selected.delta}` : `▲ +${selected.mejora}`}</span>
-                </div>
-              </div>
               <div style={{display:'flex', flexDirection:'column', gap:8}}>
                 <div style={{background:'var(--card2)', border:'1px solid var(--border)', borderRadius:10, padding:'8px 10px'}}>
                   <b style={{fontSize:14, color:'var(--muted)', display:'block'}}>Ranking Actual</b>
@@ -1319,7 +1367,10 @@ export default function App(){
                       <PokeImg id={p.speciesId} name={p.speciesName} />
                     </div>
                     <div style={{flex:1}}>
-                      <div style={{fontWeight:800, marginBottom:4}}>{formatName(p.speciesName)}</div>
+                      <div style={{fontWeight:800, marginBottom:4, display:'flex', alignItems:'center', gap:6}}>
+                        {formatName(p.speciesName)}
+                        <TypeIconsRow types={typesMap[p.speciesName]||[]} size={16} />
+                      </div>
                       <div className="small">
                         <b>Rápidos:</b>{' '}
                         {fastMoves.map((m,i)=>(

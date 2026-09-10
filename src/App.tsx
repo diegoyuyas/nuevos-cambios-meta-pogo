@@ -246,6 +246,33 @@ function PokeImg({ id, name, placeholder, style }: { id:string, name:string, pla
   )
 }
 
+/** Ícono de un tipo de Pokémon, desde /type-icons/{tipo}.webp (ej. fire.webp). */
+function TypeIcon({ type, size=20 }: { type:string, size?:number }){
+  const [error, setError] = useState(false)
+  if(error) return null
+  return (
+    <img
+      src={`/type-icons/${type.toLowerCase()}.webp`}
+      alt={type}
+      title={translateTypeEs(type)}
+      loading="lazy"
+      width={size}
+      height={size}
+      style={{display:'inline-block', verticalAlign:'middle'}}
+      onError={()=> setError(true)}
+    />
+  )
+}
+/** Fila con 1-2 íconos de tipo, para el costado de cada tarjeta de Pokémon. */
+function TypeIconsRow({ types, size=20 }: { types:string[], size?:number }){
+  if(!types || !types.length) return null
+  return (
+    <div style={{display:'flex', gap:4, flexShrink:0}}>
+      {types.map((t,i)=> <TypeIcon key={i} type={t} size={size} />)}
+    </div>
+  )
+}
+
 export default function App(){
   const visitas = useVisitCounter()
   const [theme, setTheme] = useState<ThemeKey>(()=>{
@@ -797,15 +824,17 @@ export default function App(){
           <div style={{display:'flex', justifyContent:'center', marginTop:16}}>
             <div style={{display:'flex', flexDirection:'column', alignItems:'center', gap:8}}>
               {leagueLogos[liga] && <img src={leagueLogos[liga]} alt="" width={40} height={40} />}
-              <select
-                className="liga-combo"
-                value={liga}
-                onChange={e=> handleLigaChange(e.target.value as LigaKey)}
-              >
-                {(Object.keys(LIGAS) as LigaKey[]).map(key=>(
-                  <option key={key} value={key}>{LIGAS[key].label}</option>
-                ))}
-              </select>
+              <div className="liga-combo-wrap">
+                <select
+                  className="liga-combo"
+                  value={liga}
+                  onChange={e=> handleLigaChange(e.target.value as LigaKey)}
+                >
+                  {(Object.keys(LIGAS) as LigaKey[]).map(key=>(
+                    <option key={key} value={key}>{LIGAS[key].label}</option>
+                  ))}
+                </select>
+              </div>
             </div>
           </div>
 
@@ -821,7 +850,7 @@ export default function App(){
           <p className="welcome-banner" style={{marginTop:28, textAlign:'center'}}>
             Como señal de apoyo, suscríbete gratis a mi canal de YouTube:{' '}
             <a href="https://www.youtube.com/@EntrenadorGuayD" target="_blank" rel="noopener noreferrer">Entrenador GuayD</a>
-            {' '}(si das clic te lleva directo a mi canal de YouTube), muchas gracias.
+            {' '}muchas gracias.
           </p>
         </div>
       </div>
@@ -888,6 +917,7 @@ export default function App(){
                             <div style={{display:'flex', flexDirection:'column'}}>
                               <div className="rank" style={{fontSize:20}}>#{c.newRank} {formatName(c.name)} <span style={{fontWeight:400, fontSize:13, color:'var(--muted)'}}>{c.tipos.length? `(${translateTypes(c.tipos)})`:''}</span></div>
                             </div>
+                            <TypeIconsRow types={c.tipos} />
                           </div>
                           <div className="moves" style={{marginTop:8}}>
                             <div><b>Rápido:</b> {translateMove(c.cur.moveset?.[0]||'')}</div>
@@ -911,6 +941,7 @@ export default function App(){
                         </div>
                         <div style={{flex:1}}>
                           <div className="rank" style={{fontSize:18}}>#{p.rankActual} {formatName(p.speciesName)}</div>
+                          <TypeIconsRow types={typesMap[p.speciesName]||[]} />
                           <div className="moves" style={{marginTop:4}}><b>Rápido:</b> {translateMove(p.moveset?.[0])} <br/><b>Cargados:</b> {p.moveset?.slice(1).map((m:string)=> translateMove(m)).join(', ')}</div>
                           <IVBadgesTarjeta speciesId={p.speciesId} />
                         </div>
@@ -978,6 +1009,7 @@ export default function App(){
                             </div>
                           </div>
                           <span className="badge" style={{fontSize:12, padding:'4px 8px', background:'var(--green-bg)', color:'var(--green-text)', display:'flex', gap:4, alignItems:'center'}}>escaló: ▲ +{c.mejora}</span>
+                          <TypeIconsRow types={c.tipos} />
                         </div>
                         <div className="moves" style={{marginTop:8}}>
                           <div><b>Rápido:</b> {translateMove(c.cur.moveset?.[0]||'')}</div>
@@ -1031,6 +1063,7 @@ export default function App(){
                             </div>
                           </div>
                           <span className="badge" style={{fontSize:12, padding:'4px 8px', background:'var(--red-bg)', color:'var(--red-text)', display:'flex', gap:4, alignItems:'center'}}>cayó: ▼ {c.delta}</span>
+                          <TypeIconsRow types={c.tipos} />
                         </div>
                         <div className="moves" style={{marginTop:8}}>
                           <div><b>Rápido:</b> {translateMove(c.cur.moveset?.[0]||'')}</div>
@@ -1086,7 +1119,7 @@ export default function App(){
                     {fastMovesFiltered.map((m,i)=>(
                       <tr key={m.moveId}>
                         <td>{i+1}. {m.nameEs || m.name} <span className="move-en">({m.name})</span></td>
-                        <td>{translateType(m.type)}</td>
+                        <td><span style={{display:"inline-flex", alignItems:"center", gap:4}}><TypeIcon type={m.type} size={18} /> {translateType(m.type)}</span></td>
                         <td>{m.energyGain}</td>
                         <td>{m.power}</td>
                         <td>{m.turns ?? Math.round((m.cooldown||0)/500)}</td>
@@ -1119,7 +1152,7 @@ export default function App(){
                     {chargedMovesFiltered.map((m,i)=>(
                       <tr key={m.moveId}>
                         <td>{i+1}. {m.nameEs || m.name} <span className="move-en">({m.name})</span></td>
-                        <td>{translateType(m.type)}</td>
+                        <td><span style={{display:"inline-flex", alignItems:"center", gap:4}}><TypeIcon type={m.type} size={18} /> {translateType(m.type)}</span></td>
                         <td>{m.energy}</td>
                         <td>{m.power}</td>
                         <td className="small">{formatMoveEffect(m) || '—'}</td>
@@ -1141,7 +1174,10 @@ export default function App(){
         <div className="modal" onClick={()=> setSelected(null)}>
           <div className="modal-card" onClick={e=> e.stopPropagation()} style={{maxWidth:900}}>
             <div className="row" style={{marginBottom:12}}>
-              <h2 style={{fontSize:22}}>#{selected.newRank} {formatName(selected.name)} <span style={{fontWeight:400, fontSize:14, color:'var(--muted)'}}>{selected.tipos.length? `(${translateTypes(selected.tipos)})`:''}</span></h2>
+              <h2 style={{fontSize:22, display:'flex', alignItems:'center', gap:8}}>
+                #{selected.newRank} {formatName(selected.name)} <span style={{fontWeight:400, fontSize:14, color:'var(--muted)'}}>{selected.tipos.length? `(${translateTypes(selected.tipos)})`:''}</span>
+                <TypeIconsRow types={selected.tipos} size={24} />
+              </h2>
               <button className="btn" onClick={()=> setSelected(null)}>Cerrar</button>
             </div>
 
@@ -1331,7 +1367,10 @@ export default function App(){
                       <PokeImg id={p.speciesId} name={p.speciesName} />
                     </div>
                     <div style={{flex:1}}>
-                      <div style={{fontWeight:800, marginBottom:4}}>{formatName(p.speciesName)}</div>
+                      <div style={{fontWeight:800, marginBottom:4, display:'flex', alignItems:'center', gap:6}}>
+                        {formatName(p.speciesName)}
+                        <TypeIconsRow types={typesMap[p.speciesName]||[]} size={16} />
+                      </div>
                       <div className="small">
                         <b>Rápidos:</b>{' '}
                         {fastMoves.map((m,i)=>(
