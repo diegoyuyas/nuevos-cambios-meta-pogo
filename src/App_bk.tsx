@@ -1,5 +1,6 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import type { ReactNode, CSSProperties } from 'react'
 
 type MoveDetail = { moveId:string, uses:number }
 type Match = { opponent:string, rating:number }
@@ -222,6 +223,29 @@ function useVisitCounter(){
   return visitas
 }
 
+/**
+ * Muestra la imagen de un Pokémon desde /images/{id}.webp (archivo individual,
+ * en vez del viejo pokemon_images.json gigante). Carga diferida (loading="lazy")
+ * para no pedir las 1199 imágenes de una — el navegador solo pide las que
+ * realmente entran en pantalla. Si el archivo no existe (404), cae a un texto
+ * de respaldo en vez de mostrar un ícono roto.
+ */
+function PokeImg({ id, name, placeholder, style }: { id:string, name:string, placeholder?: ReactNode, style?: CSSProperties }){
+  const [error, setError] = useState(false)
+  if(error){
+    return <>{placeholder !== undefined ? placeholder : <span style={{fontSize:10, color:'var(--placeholder)'}}>imagen</span>}</>
+  }
+  return (
+    <img
+      src={`/images/${id}.webp`}
+      alt={name}
+      loading="lazy"
+      style={style || {width:'100%', height:'100%', objectFit:'contain'}}
+      onError={()=> setError(true)}
+    />
+  )
+}
+
 export default function App(){
   const visitas = useVisitCounter()
   const [theme, setTheme] = useState<ThemeKey>(()=>{
@@ -258,7 +282,6 @@ export default function App(){
   const [formChangeMap, setFormChangeMap] = useState<Record<string, any>>({})
   const [originalFormIdMap, setOriginalFormIdMap] = useState<Record<string,string>>({})
   const [typesMap, setTypesMap] = useState<Record<string,string[]>>({})
-  const [imagesMap, setImagesMap] = useState<Record<string,string>>({})
   const [leagueLogos, setLeagueLogos] = useState<Record<string,string>>({})
   const [mejoraronSel, setMejoraronSel] = useState<string>('50')
   const [decayeronSel, setDecayeronSel] = useState<string>('')
@@ -300,14 +323,13 @@ export default function App(){
     async function load(){
       try{
         const folder = LIGAS[liga].folder
-        const [oldRes, newRes, movesRes, movesFullRes, movesActualizadosRes, typesRes, imgRes, logosRes] = await Promise.all([
+        const [oldRes, newRes, movesRes, movesFullRes, movesActualizadosRes, typesRes, logosRes] = await Promise.all([
           fetch(`/data/${folder}/siempre_adelante.json`).catch(()=> null),
           fetch(`/data/${folder}/caminos_crepusculares.json`).catch(()=> null),
           fetch('/data/moves.json').then(r=> r.ok ? r.json() : {}).catch(()=> ({})),
           fetch('/data/moves_full.json').then(r=> r.ok ? r.json() : []).catch(()=> []),
           fetch('/data/moves_actualizados.json').then(r=> r.ok ? r.json() : null).catch(()=> null),
           fetch('/data/pokemon_types.json').then(r=> r.ok ? r.json() : {}).catch(()=> ({})),
-          fetch('/data/pokemon_images.json').then(r=> r.ok ? r.json() : {}).catch(()=> ({})),
           fetch('/data/logos/league_logos.json').then(r=> r.ok ? r.json() : {}).catch(()=> ({}))
         ])
         const a = (oldRes && oldRes.ok) ? await oldRes.json() : []
@@ -348,7 +370,7 @@ export default function App(){
           })
         }
         const mergedTypesMap = { ...typesFromGamemaster, ...(typesRes||{}) }
-        setOldData(a); setNewData(b); setMovesEs(movesRes||{}); setMovesFull(fullMap); setMovesActualizados(overrides); setBaseStatsMap(baseStats); setDefaultIVsMap(defaultIVs); setTypesMap(mergedTypesMap); setImagesMap(imgRes||{}); setLeagueLogos(logosRes||{}); setFormChangeMap(formChanges); setOriginalFormIdMap(originalFormIds)
+        setOldData(a); setNewData(b); setMovesEs(movesRes||{}); setMovesFull(fullMap); setMovesActualizados(overrides); setBaseStatsMap(baseStats); setDefaultIVsMap(defaultIVs); setTypesMap(mergedTypesMap); setLeagueLogos(logosRes||{}); setFormChangeMap(formChanges); setOriginalFormIdMap(originalFormIds)
         setSinDatos(a.length===0 && b.length===0)
         setDebug(`Cargados: ${LIGAS[liga].oldLabel} ${a.length} / ${LIGAS[liga].newLabel} ${b.length} / Moves ES ${Object.keys(movesRes||{}).length} / Full ${Object.keys(fullMap).length} / Actualizados ${overrides.length}`)
       }catch(e:any){ setDebug('Error: '+ e.message) }
@@ -911,7 +933,7 @@ export default function App(){
                     {searchResults.map(c=>(
                       <div key={c.id} className="card" onClick={()=> setSelected(c)} style={{cursor:'pointer', display:'flex', gap:10}}>
                         <div style={{width:64, height:64, background:'var(--card2)', borderRadius:12, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, border:'1px solid var(--border)', overflow:'hidden'}}>
-                          {imagesMap[c.id] ? <img src={imagesMap[c.id]} alt={c.name} style={{width:'100%', height:'100%', objectFit:'contain'}}/> : <span style={{fontSize:10, color:'var(--placeholder)'}}>imagen</span>}
+                          <PokeImg id={c.id} name={c.name} />
                         </div>
                         <div style={{flex:1}}>
                           <div className="row">
@@ -946,7 +968,7 @@ export default function App(){
                     {displayList.map(c=>(
                       <div key={c.id} className="card" onClick={()=> setSelected(c)} style={{cursor:'pointer', display:'flex', gap:10}}>
                         <div style={{width:64, height:64, background:'var(--card2)', borderRadius:12, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, border:'1px solid var(--border)', overflow:'hidden'}}>
-                          {imagesMap[c.id] ? <img src={imagesMap[c.id]} alt={c.name} style={{width:'100%', height:'100%', objectFit:'contain'}}/> : <span style={{fontSize:10, color:'var(--placeholder)'}}>imagen</span>}
+                          <PokeImg id={c.id} name={c.name} />
                         </div>
                         <div style={{flex:1}}>
                           <div className="row">
@@ -981,7 +1003,7 @@ export default function App(){
                     {(rankingCompletoSel==='caminos' ? completoCaminos : completoSiempre).map((p:any)=>(
                       <div key={p.speciesId} className="card" style={{display:'flex', gap:10, alignItems:'center'}}>
                         <div style={{width:56, height:56, background:'var(--card2)', borderRadius:10, display:'flex', alignItems:'center', justifyContent:'center', border:'1px solid var(--border)', flexShrink:0}}>
-                          {imagesMap[p.speciesId] ? <img src={imagesMap[p.speciesId]} alt={p.speciesName} style={{width:'100%', height:'100%', objectFit:'contain'}}/> : <span style={{fontSize:9, color:'var(--placeholder)'}}>imagen</span>}
+                          <PokeImg id={p.speciesId} name={p.speciesName} />
                         </div>
                         <div style={{flex:1}}>
                           <div className="rank" style={{fontSize:18}}>#{p.rankActual} {formatName(p.speciesName)}</div>
@@ -1124,7 +1146,7 @@ export default function App(){
                 </div>
               </div>
               <div style={{background:'var(--near-bg)', border:'1px dashed var(--dashed-border)', borderRadius:12, height:130, display:'flex', alignItems:'center', justifyContent:'center', overflow:'hidden'}}>
-                {imagesMap[selected.id] ? <img src={imagesMap[selected.id]} alt={selected.name} style={{width:'100%', height:'100%', objectFit:'contain'}}/> : <span style={{fontSize:11, color:'var(--muted)', textAlign:'center'}}>Espacio<br/>imagen base64<br/>{selected.id}</span>}
+                <PokeImg id={selected.id} name={selected.name} placeholder={<span style={{fontSize:11, color:'var(--muted)', textAlign:'center'}}>Sin imagen<br/>{selected.id}</span>} />
               </div>
             </div>
 
@@ -1294,7 +1316,7 @@ export default function App(){
                 return (
                   <div key={p.speciesId} style={{background:'var(--card2)', border:'1px solid var(--border)', borderRadius:10, padding:'10px 12px', display:'flex', gap:10, alignItems:'flex-start'}}>
                     <div style={{width:48, height:48, background:'var(--card)', borderRadius:8, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, overflow:'hidden', border:'1px solid var(--border)'}}>
-                      {imagesMap[p.speciesId] ? <img src={imagesMap[p.speciesId]} alt={p.speciesName} style={{width:'100%', height:'100%', objectFit:'contain'}}/> : <span style={{fontSize:9, color:'var(--placeholder)'}}>img</span>}
+                      <PokeImg id={p.speciesId} name={p.speciesName} />
                     </div>
                     <div style={{flex:1}}>
                       <div style={{fontWeight:800, marginBottom:4}}>{formatName(p.speciesName)}</div>
