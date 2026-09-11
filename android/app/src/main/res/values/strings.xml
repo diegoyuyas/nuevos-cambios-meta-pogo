@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Comparador Liga Super</string>
+    <string name="title_activity_main">Comparador Liga Super</string>
+    <string name="package_name">com.diegoyuyas.pogorankings</string>
+    <string name="custom_url_scheme">com.diegoyuyas.pogorankings</string>
+</resources>

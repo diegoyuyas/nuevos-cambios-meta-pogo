@@ -205,3 +205,22 @@ body{background:var(--bg);color:var(--text);transition:background .2s ease, colo
   .league-btns{gap:8px}
   .league-btn{padding:8px 12px;font-size:11px}
 }
+
+/* ===== Ajustes para que el APK se sienta como app nativa (no como página web) ===== */
+
+/* Oculta la barra de scroll visualmente sin desactivar el scroll */
+::-webkit-scrollbar{display:none}
+html, body{-ms-overflow-style:none; scrollbar-width:none;}
+
+/* Elimina el efecto "rebote" al llegar al final de la pantalla */
+html, body{overscroll-behavior:none;}
+
+/* Evita que al mantener presionado se muestre el menú de copiar/seleccionar del navegador */
+body{-webkit-user-select:none; user-select:none; -webkit-touch-callout:none;}
+input, textarea{-webkit-user-select:text; user-select:text;}
+
+/* Respeta el notch y la barra de gestos del sistema (safe areas) */
+#root{
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+}
