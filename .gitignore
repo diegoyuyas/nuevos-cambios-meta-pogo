@@ -24,3 +24,6 @@ android/.idea/
 ios/App/build/
 ios/App/Pods/
 ios/App/App.xcworkspace/xcuserdata/
+
+# Cualquier archivo o carpeta que contenga _bk
+**/*_bk*
