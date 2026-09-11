@@ -1,3 +1,26 @@
+# Dependencias
 node_modules/
+
+# Build web
 dist/
+
+# Comprimidos
 *.rar
+
+# --- Android / Capacitor ---
+android/app/build/
+android/build/
+android/.gradle/
+android/local.properties
+android/captures/
+android/*.iml
+android/.idea/
+
+# APKs y AABs (nunca versionar binarios de builds)
+*.apk
+*.aab
+
+# --- iOS (por si en el futuro empaquetas con Capacitor también) ---
+ios/App/build/
+ios/App/Pods/
+ios/App/App.xcworkspace/xcuserdata/
